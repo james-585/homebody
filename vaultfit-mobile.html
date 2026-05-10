@@ -7040,10 +7040,12 @@ function mQtStartTimer(overrideSecs) {
       clearInterval(mTi); mTr = false;
       document.getElementById('m-timer-btn').textContent = 'Start';
       mTs = 0; mPlayTimerDone();
+      mCloseModal('m-timer-modal');
       mToast('⏱ Rest done! Back to work!', 'success');
     }
     mTick();
   }, 1000);
+  mOpenModal('m-timer-modal');
   mPlayBeep(880, 0.08, 0.3);
   if (navigator.vibrate) navigator.vibrate(80);
   // Flash the FAB to confirm
