@@ -2357,6 +2357,8 @@ function mToggleBilateral(btn) {
   btn.classList.toggle('active', isNowActive);
   row.dataset.bilateral = isNowActive ? 'true' : 'false';
   btn.textContent = isNowActive ? '✓ Both sides logged' : '↔ Both sides';
+  const wtLabel = row.querySelector('.wt-lbl');
+  if (wtLabel) wtLabel.textContent = isNowActive ? 'Weight (kg/hand)' : 'Weight (kg)';
 }
 
 function mAddRow(name) {
@@ -2372,7 +2374,7 @@ function mAddRow(name) {
       <button class="btn-rm" onclick="this.closest('.ex-row-m').remove()">×</button>
     </div>
     <div style="margin-top:6px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <div><div class="mini-label">Weight (kg)</div><input class="mini-input" type="number" placeholder="—" min="0" step="0.5" style="width:90px;"></div>
+      <div><div class="mini-label wt-lbl">Weight (kg)</div><input class="mini-input" type="number" placeholder="—" min="0" step="0.5" style="width:90px;"></div>
       <div class="bilateral-toggle">
         <button class="bilateral-btn" onclick="mToggleBilateral(this)">↔ Both sides</button>
         <span style="font-size:0.7rem;color:var(--muted);">Log each side</span>
@@ -6348,7 +6350,7 @@ function wmRenderExercise(ex, ei) {
             onchange="wmEditSet(${ei},${si},'${isTime?'time':'reps'}',this.value)">
         </div>
         <div>
-          <div class="wm-set-lbl">kg</div>
+          <div class="wm-set-lbl">kg/hand</div>
           <input class="wm-set-input" type="number" min="0" step="0.5" value="${set.weight||''}" placeholder="—"
             onchange="wmEditSet(${ei},${si},'weight',this.value)">
         </div>
