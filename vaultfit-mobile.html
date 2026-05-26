@@ -194,7 +194,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overs
 .profile-avatar{width:72px;height:72px;border-radius:50%;background:var(--surface2);border:3px solid var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto 10px;font-family:'Oswald',sans-serif;font-weight:700;font-size:1.8rem;color:var(--accent)}
 .profile-name{font-family:'Oswald',sans-serif;font-weight:700;font-size:1.3rem;letter-spacing:0.03em;text-transform:uppercase}
 .profile-sub{font-size:0.75rem;color:var(--muted);margin-top:3px}
-.bmi-scale{height:8px;border-radius:4px;width:100%;position:relative;background:linear-gradient(90deg,#4da6ff 0%,#00d68f 20%,#E84D2A 40%,#ffb800 65%,#ff5c35 85%,#ff4060 100%);margin:10px 0 4px}
+.bmi-scale{height:8px;border-radius:4px;width:100%;position:relative;background:linear-gradient(90deg,#7EB8D4 0%,#5A9E6E 20%,#5A9E6E 40%,#C97D3A 65%,#E84D2A 85%,#D94040 100%);margin:10px 0 4px}
 .bmi-scale-dot{position:absolute;top:-4px;width:16px;height:16px;background:var(--text);border-radius:50%;border:2px solid var(--bg);transform:translateX(-50%);transition:left 0.5s ease}
 .profile-form{padding:14px;display:flex;flex-direction:column;gap:12px}
 .profile-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -292,7 +292,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overs
 .wm-tick:active{transform:scale(0.9);}
 .wm-tick.done{background:var(--green);border-color:var(--green);color:#000;}
 .wm-progress{height:6px;background:var(--border);border-radius:3px;}
-.wm-progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width 0.4s ease;border-radius:3px;}
+.wm-progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--signal));transition:width 0.4s ease;border-radius:3px;}
 /* Finish sheet */
 .wm-finish-sheet{position:absolute;bottom:0;left:0;right:0;background:var(--surface);border-radius:20px 20px 0 0;padding:20px 18px;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px));box-shadow:0 -8px 40px rgba(0,0,0,0.6);animation:sheetUp 0.3s cubic-bezier(0.34,1.56,0.64,1);}
 
@@ -2297,29 +2297,12 @@ function mRenderMuscleRecovery() {
     `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">${legendHtml}</div>`;
 }
 
+
 // ─── QUICK LOG ───
 
 // ─── UNILATERAL EXERCISE DETECTION ───
 const UNILATERAL_EXERCISES = new Set([
-  'DB Single-Arm Row','DB Meadows Row','DB Concentration Curl','DB Kickback',
-  'DB Reverse Lunge','DB Walking Lunge','DB Split Squat','DB Bulgarian Split Squat',
-  'DB Single-Leg Deadlift','DB Suitcase Carry','DB Curtsy Lunge','DB Russian Deadlift',
-  'KB Press','KB Single-Leg Deadlift','KB Lunge','KB Suitcase Carry',
-  'KB Curtsy Lunge','KB Russian Deadlift',
-  'Archer Push-Up','Pistol Squat','Bulgarian Split Squat',
-  'Reverse Lunge','Walking Lunge','Lateral Lunge','Curtsy Lunge',
-  'Single-Leg Glute Bridge','Single-Leg Calf Raise',
-  'Shoulder Knee Tap','Spiderman Plank',
-  'Reverse Lunge to Knee Drive','Curtsy Lunge to Knee Drive','Lateral Lunge to Curtsy',
-  'Seated Single-Arm Press','Single-Leg Glute Bridge J-Press',
-  'Glute Bridge March','KB Russian Deadlift',
-  'DB Lunge to Press','KB Lunge to Press',
-  'DB Tricep Kickback','DB Incline Curl',
-  'BB Lunge','BB Hip Thrust','DB Hip Thrust','KB Hip Thrust',
-  'DB Step-Up','KB Step-Up','Band Glute Kickback',
-  'KB Bent-Over Row',
-  'KB Push Press','KB Floor Press','KB Clean & Press','KB Thruster','Seated KB Press',
-  'DB Split Squat to Curl','Skater Jump','Cossack Squat','DB Cossack Squat','KB Cossack Squat',
+  'Archer Push-Up','BB Hip Thrust','BB Lunge','Band Glute Kickback','Bulgarian Split Squat','Cossack Squat','Curtsy Lunge','Curtsy Lunge to Knee Drive','DB Bent-Over Row','DB Bulgarian Split Squat','DB Concentration Curl','DB Cossack Squat','DB Curtsy Lunge','DB Gorilla Row','DB Hip Thrust','DB Incline Curl','DB Kickback','DB Lunge to Press','DB Meadows Row','DB Prone Row','DB Renegade Row','DB Reverse Lunge','DB Row to Press','DB Russian Deadlift','DB Shrug to Row','DB Side Bend','DB Single-Arm Row','DB Single-Leg Deadlift','DB Split Squat','DB Split Squat to Curl','DB Step-Up','DB Straight-Arm Pulldown','DB Suitcase Carry','DB Tricep Kickback','DB Walking Lunge','DB Woodchop','Glute Bridge March','KB Bent-Over Row','KB Clean','KB Clean & Press','KB Cossack Squat','KB Curtsy Lunge','KB Devil Press','KB Floor Press','KB Gorilla Row','KB Hip Thrust','KB Lunge','KB Lunge to Press','KB Press','KB Push Press','KB Renegade Row','KB Russian Deadlift','KB Single-Leg Deadlift','KB Snatch','KB Step-Up','KB Suitcase Carry','KB Suitcase Deadlift','KB Thruster','KB Turkish Get-Up','KB Windmill','Lateral Lunge','Lateral Lunge to Curtsy','Pistol Squat','Reverse Lunge','Reverse Lunge to Knee Drive','Seated KB Press','Seated Single-Arm Press','Shoulder Knee Tap','Side Plank','Single-Leg Calf Raise','Single-Leg Glute Bridge','Single-Leg Glute Bridge J-Press','Skater Jump','Spiderman Plank','Walking Lunge'
 ]);
 
 function mIsUnilateral(name) {
@@ -6120,9 +6103,18 @@ function mShowWakeLockHelp() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (!mWakeLockActive || document.visibilityState !== 'visible' || !window.isSecureContext) return;
-  if (!mWakeLock && 'wakeLock' in navigator) {
-    navigator.wakeLock.request('screen').then(wl => { mWakeLock = wl; }).catch(()=>{});
+  if (document.visibilityState !== 'visible') return;
+  // Re-acquire wake lock after coming back from background
+  if (mWakeLockActive && window.isSecureContext && 'wakeLock' in navigator) {
+    navigator.wakeLock.request('screen').then(wl => {
+      mWakeLock = wl;
+      const btn = document.getElementById('m-wake-btn');
+      if (btn) {
+        btn.style.background = 'rgba(232,77,42,0.15)';
+        btn.style.borderColor = 'var(--accent)';
+        btn.style.color = 'var(--accent)';
+      }
+    }).catch(()=>{});
   }
 });
 
@@ -6156,9 +6148,17 @@ async function mPlayBeep(freq = 880, duration = 0.15, vol = 0.4) {
 async function mPlayTimerDone() {
   try {
     const ctx = mGetTimerCtx();
-    if (ctx.state === 'suspended') await ctx.resume();
+    // Always try to resume — suspended after backgrounding
+    if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
+      await ctx.resume().catch(()=>{});
+    }
+    // Give it a moment if still not running
     if (ctx.state !== 'running') {
-      // Fallback: vibrate only
+      await new Promise(r => setTimeout(r, 80));
+      if (ctx.state === 'suspended') await ctx.resume().catch(()=>{});
+    }
+    if (ctx.state !== 'running') {
+      // Final fallback: vibrate only
       if (navigator.vibrate) navigator.vibrate([300,100,300,100,300,150,500]);
       return;
     }
@@ -6798,11 +6798,12 @@ function wmFinish() {
   wmState.exercises.forEach(ex => {
     const lastSet = ex.sets[ex.sets.length - 1];
     const doneSetsEx = wmCountDone(ex.sets) || ex.sets.length;
-    const reps = lastSet.trackType === 'time' ? 0 : (lastSet.reps || 0);
-    const time = lastSet.trackType === 'time' ? (lastSet.time || 0) : 0;
+    const isTime = lastSet.trackType === 'time';
+    const reps = isTime ? 0 : (lastSet.reps || 0);
+    const time = isTime ? (lastSet.time || 0) : 0;
     const weight = lastSet.weight || 0;
-    if (lastSet.trackType === 'reps') totalVol += doneSetsEx * reps * weight;
-    finishExercises.push({ name: ex.name, sets: doneSetsEx, reps, time, weight, trackType: lastSet.trackType });
+    if (!isTime) totalVol += doneSetsEx * reps * weight;
+    finishExercises.push({ name: ex.name, sets: doneSetsEx, reps, time, weight, trackType: isTime ? 'time' : 'reps' });
   });
   const cRange = calcCalorieRange(finishExercises, bw, mins);
   const volDisplay = totalVol >= 1000 ? (totalVol/1000).toFixed(1)+'t' : totalVol+'kg';
@@ -7076,6 +7077,7 @@ if (screen.orientation && screen.orientation.lock) {
 // ─── INIT ───
 window.addEventListener('DOMContentLoaded', () => {
   try {
+    mLoadTheme();
     persistLoad();
     mRenderHome();
     mRenderProgress();
