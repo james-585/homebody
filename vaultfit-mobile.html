@@ -6121,10 +6121,20 @@ document.addEventListener('visibilitychange', () => {
 // ─── TIMER SOUND ───
 let mTimerAudioCtx = null;
 function mGetTimerCtx() {
+  // Always create a fresh context — holding one open permanently
+  // interrupts background music on iOS/Android.
+  // latencyHint:'playback' signals we are a secondary audio source
+  // not a media player, so the OS won't duck/interrupt other audio.
   if (!mTimerAudioCtx || mTimerAudioCtx.state === 'closed') {
-    mTimerAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    mTimerAudioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
   }
   return mTimerAudioCtx;
+}
+async function mCloseTimerCtx() {
+  if (mTimerAudioCtx && mTimerAudioCtx.state !== 'closed') {
+    try { await mTimerAudioCtx.close(); } catch(e) {}
+    mTimerAudioCtx = null;
+  }
 }
 async function mPlayBeep(freq = 880, duration = 0.15, vol = 0.4) {
   try {
@@ -6142,6 +6152,8 @@ async function mPlayBeep(freq = 880, duration = 0.15, vol = 0.4) {
     gain.connect(ctx.destination);
     osc.start(now);
     osc.stop(now + duration + 0.05);
+    // Release audio session after beep so background music resumes
+    setTimeout(() => mCloseTimerCtx(), (duration + 0.1) * 1000);
   } catch(e) {}
 }
 
@@ -6195,6 +6207,8 @@ async function mPlayTimerDone() {
     });
 
     if (navigator.vibrate) navigator.vibrate([200,100,200,100,200,150,300,100,300,150,400]);
+    // Last beep ends at ~2.75s — close context after to release audio session
+    setTimeout(() => mCloseTimerCtx(), 3200);
   } catch(e) {
     if (navigator.vibrate) navigator.vibrate([300,100,300,100,500]);
   }
