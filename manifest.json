@@ -2,7 +2,7 @@
   "name": "HomeBody",
   "short_name": "HomeBody",
   "description": "Log. Build. Dominate. Your personal workout tracker.",
-  "start_url": "vaultfit-mobile.html",
+  "start_url": "index.html",
   "scope": ".",
   "display": "standalone",
   "background_color": "#080c10",
