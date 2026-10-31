@@ -213,6 +213,9 @@ test('a failed precache fetch leaves no new cache and the old worker in charge',
     expect(after.active).toBe(before.script);
     expect(after.waiting).toBe(false);
   } finally {
+    // server.close() waits for idle keep-alive and speculative browser connections; close the page
+    // (and with it its worker) first, or the close can wait past the test timeout.
+    await page.context().close();
     await server.close();
     await rm(dir, { recursive: true, force: true });
   }

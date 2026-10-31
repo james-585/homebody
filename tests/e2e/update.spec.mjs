@@ -33,9 +33,11 @@ const test = base.extend({
     },
     { scope: 'worker' },
   ],
-  site: async ({ builds }, use) => {
+  site: async ({ builds, context }, use) => {
     const site = await createSite(builds.v1.dir);
     await use(site);
+    // server.close() waits for idle and speculative browser connections: drop the browser side first.
+    await context.close();
     await site.close();
   },
 });
