@@ -60,4 +60,10 @@ The architect creates docs/architecture.md and docs/milestones.md in the first m
 Acceptance criteria met with tests · migration tests pass for every storage change · algorithm and property tests pass where relevant · data integrity tests pass · works offline · reviews resolved · docs updated (docs/training-logic.md for any rule change).
 
 ## Commands
-No toolchain yet. Until the architect adds one: serve the folder statically (`python3 -m http.server`) to run the app, and use `node --check` on extracted scripts for syntax. When a toolchain exists, list `verify`, `test`, `lint`, `format:check`, `e2e` here and add them to the allow list in .claude/settings.json.
+Dev tooling only (Node 22+; the app itself has no build step and no runtime dependencies). One-time setup on a fresh clone: `npm ci` then `npx playwright install chromium webkit` (on Linux, WebKit also needs system libraries: `npx playwright install-deps webkit`, run by a human).
+- `npm run verify`: lint + format:check + unit + e2e. Must be green before a PR.
+- `npm test`: unit tests (`node --test`, no browser needed): fixture facts, migration harness.
+- `npm run test:e2e` (alias `npm run e2e`): Playwright against the real `index.html`, served by `scripts/serve.mjs` on a random port. Chromium runs everything; WebKit runs only tests tagged `@smoke`. Pass `-- --project=chromium` to run one browser.
+- `npm run lint` / `npm run lint:fix`, `npm run format:check` / `npm run format`. `index.html`, `sw.js` and `manifest.json` are excluded from both until a formatter is adopted for them.
+- Goldens in `tests/golden/` are characterisations of the shipped app under a frozen clock (2026-11-01T12:00:00Z, UTC, en-GB). A test never rewrites them; only `UPDATE_GOLDENS=1 npx playwright test --project=chromium` does, and the diff must be reviewed by hand.
+- Serve the app by hand: `node scripts/serve.mjs . 8000` or `python3 -m http.server`.
