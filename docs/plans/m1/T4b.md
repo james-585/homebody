@@ -86,3 +86,6 @@ Approved by James on 2026-10-31, in chat, with these answers:
 - Q3: deploy only after James has run the manual iPhone check against the old build (the plan's checklist).
 - Q4: a gate. If the old-code mid-workout reload loses anything beyond a running rest timer, T4b stops and reports before any deploy.
 T4b is tests and docs only; if the upgrade test reveals a product bug, stop and report, do not fix it here.
+
+## Gate ruling (James, in chat, 2026-10-31)
+The Q4 gate does not trigger. The old-code mid-workout reload loses only in-memory state (a running rest timer and a typed-but-uncommitted field value, because the app saves on `change`); the workout, every ticked set and all history are kept (`vaultfit_v1` byte-identical, `hb_active_workout` restored with "Workout resumed"). James accepted this as the documented cost of the first update after M1. The manual iPhone check (docs/offline.md, "Verification") still precedes any deploy.
