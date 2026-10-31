@@ -41,17 +41,28 @@ async function watch(context, page, siteURL) {
   return seen;
 }
 
-/** First visit: wait until the worker is installed (cache filled) and controls a settled page. */
+/** First visit: wait until the worker controls the page and its cache holds the whole shell. */
 async function firstLoad(page, siteURL) {
   await page.goto(siteURL + 'index.html');
-  // The shipped page reloads once when the worker claims it (until T4). Wait for a document
-  // that was served by the worker, which is controlled from its first byte.
+  // The worker claims the open page without a reload (T4). The cache is complete before activation.
   await page.waitForFunction(
-    () =>
-      document.readyState === 'complete' &&
-      !!globalThis.navigator.serviceWorker.controller &&
-      globalThis.performance.getEntriesByType('navigation')[0]?.workerStart > 0,
+    () => document.readyState === 'complete' && !!globalThis.navigator.serviceWorker.controller,
   );
+  // (waitForFunction does not poll an async predicate, so the cache check polls from here.)
+  await expect
+    .poll(() =>
+      page.evaluate(
+        async ([name, files]) => {
+          if (!(await globalThis.caches.has(name))) return false;
+          const have = (await (await globalThis.caches.open(name)).keys()).map((r) =>
+            new URL(r.url).pathname.replace(/^\//, ''),
+          );
+          return files.every((f) => have.includes(f));
+        },
+        [`homebody-${VERSION}`, PRECACHE],
+      ),
+    )
+    .toBe(true);
 }
 
 async function externalResources(page) {

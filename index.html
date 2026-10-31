@@ -697,6 +697,31 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overs
           <button class="btn-secondary" style="width:100%;" onclick="tutReplay()">🎓 Replay App Tutorial</button>
         </div>
       </div>
+      <!-- About (T4a, docs/design/update-notice.md) -->
+      <div class="card" id="hb-about" style="margin-top:10px;">
+        <div class="card-title">About</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:48px;border-bottom:1px solid var(--border);">
+          <span style="font-size:0.85rem;font-weight:500;color:var(--text);">Version</span>
+          <span style="display:flex;align-items:center;gap:8px;min-width:0;">
+            <span id="hb-about-version" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:0.85rem;letter-spacing:0.02em;color:var(--text);overflow-wrap:anywhere;">Unknown</span>
+            <button type="button" id="hb-about-copy" class="btn-secondary" aria-label="Copy version" hidden style="min-height:44px;min-width:64px;padding:0 12px;">Copy</button>
+            <span id="hb-about-copy-status" role="status" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;"></span>
+          </span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:48px;">
+          <span style="font-size:0.85rem;font-weight:500;color:var(--text);">Offline</span>
+          <span role="status" style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--text);">
+            <span id="hb-about-dot" aria-hidden="true" style="width:10px;height:10px;border-radius:50%;background:var(--warning);flex-shrink:0;"></span>
+            <span id="hb-about-offline-text">Setting up…</span>
+          </span>
+        </div>
+        <div id="hb-about-update-row" hidden>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:48px;border-top:1px solid var(--border);">
+            <span id="hb-about-update-label" style="font-size:0.85rem;font-weight:500;color:var(--text);">Update ready</span>
+            <button type="button" id="hb-about-update-btn" class="btn-secondary" style="min-height:44px;">Update</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -886,20 +911,6 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overs
       <button id="fr-next-btn" class="btn-primary" style="width:100%;opacity:0.4;pointer-events:none;" onclick="frNext()">Next →</button>
       <button id="fr-skip-btn" style="background:none;border:none;color:var(--muted);font-size:0.78rem;cursor:pointer;padding:4px;" onclick="frSkip()">Skip setup</button>
     </div>
-  </div>
-</div>
-<!-- PWA UPDATE BANNER -->
-<div id="m-update-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--surface);border-bottom:2px solid var(--accent);padding:12px 16px;display:none;align-items:center;justify-content:space-between;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,0.5);">
-  <div style="display:flex;align-items:center;gap:10px;">
-    <span style="font-size:1.1rem;">🔄</span>
-    <div>
-      <div style="font-family:'Oswald',sans-serif;font-weight:700;font-size:0.85rem;letter-spacing:0.04em;">Update Available</div>
-      <div style="font-size:0.72rem;color:var(--muted);">HomeBody has been updated</div>
-    </div>
-  </div>
-  <div style="display:flex;gap:8px;flex-shrink:0;">
-    <button onclick="mDismissUpdate()" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:0.72rem;">Later</button>
-    <button onclick="mApplyUpdate()" class="btn-primary" style="padding:7px 14px;font-size:0.72rem;border-radius:8px;">Update Now</button>
   </div>
 </div>
 <!-- TUTORIAL OVERLAY -->
@@ -7720,84 +7731,263 @@ function mShowWorkout(id) {
   }, {passive:true});
 }
 
-// ─── SERVICE WORKER + UPDATE BANNER ───
-// ─── UPDATE BANNER ───
-let mPendingSW = null;
-function mShowUpdateBanner() {
-  const banner = document.getElementById('m-update-banner');
-  if (banner) banner.style.display = 'flex';
+// ─── SERVICE WORKER + UPDATE NOTICE (T4a) ───
+// Spec: docs/design/update-notice.md. Strategy: docs/offline.md. ADR 0003.
+// A new version waits until the user taps Update (or every window of the app closes); it is
+// never announced or applied while a workout is in progress. All strings are constants set with
+// textContent; VERSION is hex only.
+function hbWorkoutActive() {
+  try { if (wmState !== null) return true; } catch (e) { /* wmState not initialised yet */ }
+  try { return localStorage.getItem('hb_active_workout') !== null; } catch (e) { return false; }
 }
-function mDismissUpdate() {
-  const banner = document.getElementById('m-update-banner');
-  if (banner) banner.style.display = 'none';
-}
-function mApplyUpdate() {
-  if (mPendingSW) {
-    mPendingSW.postMessage('skipWaiting');
-  } else {
-    window.location.reload();
+(function () {
+  const SW = 'serviceWorker' in navigator ? navigator.serviceWorker : null;
+  const APP_SCOPE = new URL('./', document.baseURI).href;
+  const COPY = {
+    update: { title: 'Update ready', body: 'Reloads HomeBody. Your history is kept.', go: 'Update', line: 'Update ready' },
+    reload: { title: 'HomeBody was updated', body: 'Updated in another window. Reload to use the new version.', go: 'Reload', line: 'Updated in another window' },
+  };
+  const $ = id => document.getElementById(id);
+  const reduced = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let reg = null, waiting = null, kind = null;      // kind: null | 'update' | 'reload'
+  let wasControlled = !!(SW && SW.controller);
+  let rejected = false, requested = false, dismissed = false;
+  let held = false, settled = false, shown = false;
+  let lastCheck = 0, activeVersion = null;
+  let bodyObs = null, toastObs = null, settleTimer = 0, restoreTimer = 0, copyTimer = 0;
+
+  // ── banner (built here, placed just before the bottom nav) ──
+  const css = document.createElement('style');
+  css.textContent =
+    '#hb-update{position:fixed;left:14px;right:14px;max-width:520px;margin:0 auto;bottom:calc(var(--nav-h) + var(--safe-bottom) + 74px);z-index:9590;background:var(--surface);border:1.5px solid var(--accent);border-radius:14px;padding:14px 16px;color:var(--text);box-shadow:0 8px 32px rgba(0,0,0,0.8),0 2px 8px rgba(0,0,0,0.4);opacity:0;transform:translateY(16px);transition:opacity 200ms ease-out,transform 200ms ease-out}' +
+    '#hb-update.hb-in{opacity:1;transform:none}' +
+    '#hb-update.hb-out{opacity:0;transform:none;transition:opacity 150ms}' +
+    '#hb-update .hb-t{font-family:Oswald,sans-serif;font-weight:700;font-size:1rem}' +
+    '#hb-update .hb-b{font-family:Inter,sans-serif;font-size:0.85rem;margin-top:4px}' +
+    '#hb-update .hb-r{display:flex;gap:8px;margin-top:12px}' +
+    '#hb-update .hb-r button{flex:1 1 0;min-height:48px}' +
+    '#hb-update button:disabled{opacity:0.6;cursor:default}' +
+    '#hb-update button:focus-visible,#hb-about button:focus-visible{outline:2px solid var(--text);outline-offset:2px}' +
+    '@media (prefers-reduced-motion:reduce){#hb-update,#hb-update.hb-in,#hb-update.hb-out{transition:none;transform:none}}';
+  document.head.appendChild(css);
+
+  const box = document.createElement('div');
+  box.id = 'hb-update';
+  box.setAttribute('role', 'region');
+  box.setAttribute('aria-label', 'App update');
+  box.hidden = true;
+  const status = document.createElement('div');
+  status.setAttribute('role', 'status');
+  const tEl = document.createElement('div'); tEl.className = 'hb-t';
+  const bEl = document.createElement('div'); bEl.className = 'hb-b';
+  status.append(tEl, bEl);
+  const btnRow = document.createElement('div'); btnRow.className = 'hb-r';
+  const later = document.createElement('button'); later.type = 'button'; later.className = 'btn-secondary'; later.textContent = 'Later';
+  const go = document.createElement('button'); go.type = 'button'; go.className = 'btn-primary';
+  btnRow.append(later, go);
+  box.append(status, btnRow);
+  const nav = document.querySelector('nav.bottom-nav');
+  nav.parentNode.insertBefore(box, nav);
+
+  // ── About card ──
+  const aVersion = $('hb-about-version'), aCopy = $('hb-about-copy'), aCopyStatus = $('hb-about-copy-status');
+  const aDot = $('hb-about-dot'), aOffline = $('hb-about-offline-text');
+  const aRow = $('hb-about-update-row'), aLabel = $('hb-about-update-label'), aBtn = $('hb-about-update-btn');
+
+  function refreshAbout() {
+    const ctl = SW && SW.controller;
+    let text = 'Setting up…', color = 'var(--warning)';
+    if (!SW || (rejected && !ctl)) { text = 'Not available in this browser'; color = 'var(--muted)'; }
+    else if (ctl) { text = 'Ready'; color = 'var(--signal)'; }
+    if (aOffline.textContent !== text) aOffline.textContent = text; // one polite announcement per change
+    aDot.style.background = color;
+    if (activeVersion) { aVersion.textContent = activeVersion; aCopy.hidden = false; }
+    else { aVersion.textContent = 'Unknown'; aCopy.hidden = true; }
+    aRow.hidden = !(kind && dismissed);
+    if (kind) { aLabel.textContent = COPY[kind].line; if (!aBtn.disabled) aBtn.textContent = COPY[kind].go; }
   }
-}
 
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js?v=7').then(reg => {
-      reg.addEventListener('updatefound', () => {
-        const newWorker = reg.installing;
-        if (!newWorker) return;
-        newWorker.addEventListener('statechange', () => {
-          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            mPendingSW = newWorker;
-            mShowUpdateBanner();
-          }
-        });
-      });
-
-      function showUpdateBanner(worker) {
-        // Don't show if banner already visible
-        if (document.getElementById('m-update-banner')) return;
-        const banner = document.createElement('div');
-        banner.id = 'm-update-banner';
-        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--accent);color:#000;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;font-family:"Oswald",sans-serif;font-weight:700;font-size:0.82rem;letter-spacing:0.06em;text-transform:uppercase;box-shadow:0 2px 12px rgba(0,0,0,0.4);';
-        banner.innerHTML = `
-          <span>⬆ Update available</span>
-          <div style="display:flex;gap:8px;">
-            <button onclick="document.getElementById('m-update-banner').remove()" style="background:rgba(0,0,0,0.15);border:none;color:#000;font-family:'Oswald',sans-serif;font-weight:700;font-size:0.75rem;letter-spacing:0.06em;padding:6px 12px;border-radius:5px;cursor:pointer;">Later</button>
-            <button id="m-update-apply" style="background:#000;border:none;color:var(--accent);font-family:'Oswald',sans-serif;font-weight:700;font-size:0.75rem;letter-spacing:0.06em;padding:6px 14px;border-radius:5px;cursor:pointer;">Reload now</button>
-          </div>`;
-        document.body.appendChild(banner);
-        document.getElementById('m-update-apply').addEventListener('click', () => {
-          worker.postMessage('skipWaiting');
-        });
-      }
-
-      // New SW waiting right now (e.g. user opened app after update was already downloaded)
-      if (reg.waiting) {
-        showUpdateBanner(reg.waiting);
-      }
-
-      // New SW found and installing
-      reg.addEventListener('updatefound', () => {
-        const newWorker = reg.installing;
-        newWorker.addEventListener('statechange', () => {
-          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            showUpdateBanner(newWorker);
-          }
-        });
-      });
-
-      // Poll for updates every 60 seconds while app is open
-      setInterval(() => reg.update(), 60000);
-
-    }).catch(() => {});
-
-    // When SW takes control (after user taps Reload), refresh the page
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!refreshing) { refreshing = true; window.location.reload(); }
+  // ── asking a worker for its release version (local message, no network) ──
+  function getVersion(worker) {
+    return new Promise(ok => {
+      if (!worker) return ok(null);
+      const ch = new MessageChannel();
+      let done = false;
+      const finish = v => { if (done) return; done = true; ch.port1.close(); ok(v); };
+      ch.port1.onmessage = e => finish(typeof e.data === 'string' && /^[0-9a-f]{12}$/.test(e.data) ? e.data : null);
+      setTimeout(() => finish(null), 2000);
+      try { worker.postMessage({ type: 'GET_VERSION' }, [ch.port2]); } catch (e) { finish(null); }
     });
+  }
+  function loadVersion() {
+    if (!SW || !SW.controller) { activeVersion = null; refreshAbout(); return; }
+    getVersion(SW.controller).then(v => { activeVersion = v; refreshAbout(); });
+  }
+
+  // ── show / hide ──
+  const busy = () => hbWorkoutActive() || !!$('wm-overlay');
+  function show() {
+    const c = COPY[kind];
+    box.hidden = false;
+    tEl.textContent = c.title;
+    bEl.textContent = c.body;
+    setBusy(false);
+    box.classList.remove('hb-out');
+    void box.offsetWidth;
+    box.classList.add('hb-in');
+    shown = true;
+    refreshAbout();
+  }
+  function hideNow() {
+    box.hidden = true;
+    box.classList.remove('hb-in', 'hb-out');
+    tEl.textContent = '';
+    bEl.textContent = '';
+    shown = false;
+    refreshAbout();
+  }
+  function fadeOut() {
+    shown = false;
+    if (reduced()) { hideNow(); return; }
+    box.classList.remove('hb-in');
+    box.classList.add('hb-out');
+    setTimeout(() => { if (!shown) hideNow(); }, 150);
+    refreshAbout();
+  }
+  function setBusy(on) {
+    clearTimeout(restoreTimer);
+    later.disabled = go.disabled = aBtn.disabled = on;
+    later.textContent = 'Later';
+    go.textContent = on ? 'Updating…' : (kind ? COPY[kind].go : 'Update');
+    aBtn.textContent = on ? 'Updating…' : (kind ? COPY[kind].go : 'Update');
+    // No takeover after 10 s: the buttons quietly come back; the update still applies on the next full close.
+    if (on) restoreTimer = setTimeout(() => setBusy(false), 10000);
+  }
+
+  // The one place that decides whether the notice may be on screen.
+  function toastsPending() { const t = $('m-toasts'); return !!(t && t.childElementCount); }
+  function evaluate() {
+    watch(!!kind);
+    if (!kind) { hideNow(); return; }
+    if (busy()) {           // workout running: nothing at all, and hold for later
+      held = true; settled = false;
+      clearTimeout(settleTimer); settleTimer = 0;
+      if (shown || !box.hidden) hideNow();
+      return;
+    }
+    if (dismissed || shown) return;
+    if (held) {             // a workout just ended: save toasts first, and not before 4 s
+      if (!settled) {
+        if (!settleTimer) settleTimer = setTimeout(() => { settleTimer = 0; settled = true; evaluate(); }, 4000);
+        return;
+      }
+      if (toastsPending()) {
+        if (!toastObs) {
+          toastObs = new MutationObserver(() => {
+            if (toastsPending()) return;
+            toastObs.disconnect(); toastObs = null; evaluate();
+          });
+          toastObs.observe($('m-toasts'), { childList: true });
+        }
+        return;
+      }
+      held = false; settled = false;
+    }
+    show();
+  }
+  // Only while a notice is pending: watch for the workout layer being added or removed.
+  function watch(on) {
+    if (on && !bodyObs) {
+      bodyObs = new MutationObserver(evaluate);
+      bodyObs.observe(document.body, { childList: true });
+    } else if (!on && bodyObs) {
+      bodyObs.disconnect(); bodyObs = null;
+    }
+  }
+  window.addEventListener('storage', e => {          // a workout ended in another tab
+    if (kind && (e.key === null || e.key === 'hb_active_workout')) evaluate();
   });
-}
+
+  // ── actions ──
+  function onGo() {
+    if (hbWorkoutActive()) { evaluate(); return; }   // re-check at tap time
+    if (kind === 'reload') { location.reload(); return; }
+    const w = (reg && reg.waiting) || waiting;
+    if (!w) { kind = null; evaluate(); return; }
+    requested = true;
+    setBusy(true);
+    w.postMessage({ type: 'SKIP_WAITING' });
+  }
+  function onLater() { dismissed = true; fadeOut(); }
+  go.addEventListener('click', onGo);
+  aBtn.addEventListener('click', onGo);
+  later.addEventListener('click', onLater);
+  box.addEventListener('keydown', e => { if (e.key === 'Escape') onLater(); });
+  aCopy.addEventListener('click', async () => {
+    let ok = false;
+    try { await navigator.clipboard.writeText('HomeBody ' + activeVersion); ok = true; } catch (e) { /* denied or unavailable */ }
+    const msg = ok ? 'Copied' : 'Copy failed';
+    aCopy.textContent = msg; aCopyStatus.textContent = msg;
+    clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => { aCopy.textContent = 'Copy'; aCopyStatus.textContent = ''; }, 2000);
+  });
+
+  // ── worker events ──
+  async function consider() {
+    const w = reg && reg.waiting, ctl = SW.controller;
+    if (!w || !ctl || kind === 'reload') return;
+    const [cur, next] = await Promise.all([getVersion(ctl), getVersion(w)]);
+    if (!reg || reg.waiting !== w) return;
+    if (next === null || next === cur) return;       // same release (or silent): not an update
+    waiting = w;
+    if (kind !== 'update') { kind = 'update'; dismissed = false; }
+    evaluate();
+  }
+  function track(r) {
+    r.addEventListener('updatefound', () => {
+      const w = r.installing;
+      if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') consider(); });
+    });
+    consider();                                       // already waiting at launch
+  }
+  function onControllerChange() {
+    const first = !wasControlled;
+    wasControlled = true;
+    loadVersion();
+    if (requested && !hbWorkoutActive() && reg && reg.scope === APP_SCOPE) { location.reload(); return; }
+    if (first && !requested) {                        // first install claimed this page: no reload
+      if (!hbWorkoutActive()) mToast('Ready to use offline', 'success');
+      refreshAbout();
+      return;
+    }
+    kind = 'reload'; dismissed = false; requested = false; waiting = null;  // updated elsewhere, or a workout began
+    setBusy(false);
+    if (shown || !box.hidden) hideNow();             // re-render with the reload copy
+    evaluate();
+  }
+  function check() {                                  // no timer: launch and return-to-app only
+    if (!reg || navigator.onLine === false) return; // offline: nothing to fetch, nothing to show
+    const now = Date.now();
+    if (lastCheck && now - lastCheck < 60000) return;
+    lastCheck = now;
+    reg.update().catch(() => {});
+  }
+
+  refreshAbout();
+  if (SW) {
+    SW.addEventListener('controllerchange', onControllerChange);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+    loadVersion();
+    window.addEventListener('load', () => {
+      SW.register('sw.js', { updateViaCache: 'none' }).then(r => {
+        reg = r;
+        track(r);
+        if (r.active) check();
+      }).catch(() => { rejected = true; refreshAbout(); });
+    });
+  }
+})();
 if(!state.profile?.name) setTimeout(()=>mToast('👋 Welcome to HomeBody! Tap Profile to set up your account.',''),1200);
 
 </script></body></html>
