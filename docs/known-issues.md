@@ -8,6 +8,8 @@ Seeded from the product/code review of the shipped app (index.html, sw.js, manif
 | K1 | `sw.js` precaches only `manifest.json`, and `index.html` is network-first with an empty cache as fallback, so the app does not open offline. Fonts come from Google Fonts. | storage-sync-engineer |
 | K2 | All data lives in one localStorage blob (`vaultfit_v1`). Only a manual export protects it; storage can be evicted or cleared. Writes fail silently (`persistSave` swallows errors). | storage-sync-engineer |
 | K3 | Exercises are matched by name string; bilateral sides are a " (Left)" / " (Right)" suffix. Renaming breaks history, PRs and plans. | exercise-data-curator, architect |
+| K16 | **Confirmed on a real export:** 12 exercise names in 149 workouts of history are missing from the current library (for example "DB Curl", "KB Front Raise", "Farmer's Walk", a typo "DB Sumo Squat with Capf Raise"). Volume, recovery, PR and strength-level code skips unmatched names, so stats are silently undercounted. Fixture: tests/fixtures/legacy/vaultfit_v1_export.sanitized.json. | exercise-data-curator, storage-sync-engineer |
+| K17 | Stored records come in mixed shapes: workouts with and without `notes` / `rpe` (47 of 149 have no RPE), and two side encodings (474 entries use the " (Left)" / " (Right)" name suffix, only 248 also carry `bilateral` / `side`). Migrations and readers must handle all of them. | storage-sync-engineer |
 | K4 | Cache version is bumped by hand; `sw.js?v=7` is registered while the cache is v11 and comments say v8. | devops-engineer |
 
 ## Training logic
@@ -25,6 +27,8 @@ Seeded from the product/code review of the shipped app (index.html, sw.js, manif
 | K10 | Streak counts consecutive calendar days, so a planned rest day resets it to zero. | product-designer, strategist |
 | K11 | Viewport sets `user-scalable=no` (blocks pinch-zoom); muted text colour on the dark background is likely below WCAG AA for small text. | accessibility-performance-reviewer |
 | K12 | Profile weight is kg only; no unit setting. | product-designer, frontend-engineer |
+| K18 | With a sparse real equipment ladder (dumbbells 5 and 10 kg, kettlebells 10 and 16 kg) the fixed "+1.25 / +2.5 kg" hint in `mGetSuggestion` is unusable. Progression needs non-load levers (reps, sets, tempo, pauses, density, unilateral variants) when the next weight does not exist. | training-scientist, strength-coach |
+| K19 | No support for training around an injury or constraint. A real user runs spine-aware programming (spinal-loading days spaced 72 h or more apart, supersets only on non-spine days) and rehab phases, encoded only in free-text plan day names and notes. Needs a decision on constraint tags per exercise ("spinal loading"), spacing rules, and plan versioning (the same user has v3, v4 and v5 of one programme as separate workout-name prefixes). Must stay coach-not-clinician: the app applies the user's own constraints and does not diagnose or prescribe rehab. | product-strategist, strength-coach, architect |
 | K13 | Exercises use emoji icons and text instructions only; no form media. | product-designer, exercise-data-curator |
 
 ## Engineering
