@@ -54,14 +54,15 @@ The architect creates docs/architecture.md and docs/milestones.md in the first m
 - `.env` and `.env.*` (except `.env.example`) cannot be read or edited. The app needs no secrets; if one ever seems necessary, stop and ask.
 - `docs/reference/` (frozen snapshots of shipped versions) and `tests/fixtures/legacy/` (real-shape user data used for migration tests) are append-only. Never edit an existing file in them; add a new file instead.
 - Prettier and ESLint run on edited source files once a toolchain and `node_modules` exist. `index.html` and `sw.js` are excluded until the architect adopts a formatter for them, because reformatting a 670 KB file on every edit buries the real diff. An ESLint failure is reported back: fix the code, never disable the rule.
-- Before any change to `index.html`, the service worker cache name in `sw.js` is bumped in the same change (the cache version is the release mechanism).
+- The service worker cache name is the release identifier and is never edited by hand. After changing any shipped file (`index.html`, `manifest.json`, icons, `src/**/*.js`, `fonts/*.woff2`, or `sw.js` itself), run `npm run stamp` and commit the updated `sw.js` in the same change. `npm run stamp:check` is part of `verify` and CI and fails if it is stale.
 
 ## Definition of done
 Acceptance criteria met with tests · migration tests pass for every storage change · algorithm and property tests pass where relevant · data integrity tests pass · works offline · reviews resolved · docs updated (docs/training-logic.md for any rule change).
 
 ## Commands
 Dev tooling only (Node 22+; the app itself has no build step and no runtime dependencies). One-time setup on a fresh clone: `npm ci` then `npx playwright install chromium webkit` (on Linux, WebKit also needs system libraries: `npx playwright install-deps webkit`, run by a human).
-- `npm run verify`: lint + format:check + unit + e2e. Must be green before a PR.
+- `npm run verify`: stamp:check + lint + format:check + unit + e2e. Must be green before a PR. CI (`.github/workflows/ci.yml`) runs it on every PR and push to main.
+- `npm run stamp`: rewrites the generated `VERSION` / `PRECACHE` block in `sw.js` from a content hash of the shell files. `npm run stamp:check` only verifies it (writes nothing).
 - `npm test`: unit tests (`node --test`, no browser needed): fixture facts, migration harness.
 - `npm run test:e2e` (alias `npm run e2e`): Playwright against the real `index.html`, served by `scripts/serve.mjs` on a random port. Chromium runs everything; WebKit runs only tests tagged `@smoke`. Pass `-- --project=chromium` to run one browser.
 - `npm run lint` / `npm run lint:fix`, `npm run format:check` / `npm run format`. `index.html`, `sw.js` and `manifest.json` are excluded from both until a formatter is adopted for them.
