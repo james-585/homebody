@@ -365,3 +365,16 @@ test('a hostile runtime filename fails the stamp instead of being skipped', asyn
     });
   }
 });
+
+test('the runtime-file filter is case-insensitive (src/x.JS is precached)', async () => {
+  await withTree(
+    { 'src/x.JS': '1', 'fonts/F.WOFF2': '2', 'src/n.TXT': '3' },
+    undefined,
+    async (root) => {
+      const list = await listPrecache(root);
+      assert.ok(list.includes('src/x.JS'));
+      assert.ok(list.includes('fonts/F.WOFF2'));
+      assert.ok(!list.includes('src/n.TXT'));
+    },
+  );
+});
