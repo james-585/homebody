@@ -7741,7 +7741,12 @@ function mShowWorkout(id) {
 // textContent; VERSION is hex only.
 function hbWorkoutActive() {
   try { if (wmState !== null) return true; } catch (e) { /* wmState not initialised yet */ }
-  try { return localStorage.getItem('hb_active_workout') !== null; } catch (e) { return false; }
+  try { // the same validity test as wmRestoreIfActive (parse, require exercises); the key is never deleted here
+    const raw = localStorage.getItem('hb_active_workout');
+    if (!raw) return false;
+    const saved = JSON.parse(raw);
+    return !!(saved && saved.exercises);
+  } catch (e) { return false; }
 }
 (function () {
   const SW = 'serviceWorker' in navigator ? navigator.serviceWorker : null;
@@ -7755,7 +7760,7 @@ function hbWorkoutActive() {
 
   let reg = null, waiting = null, kind = null;      // kind: null | 'update' | 'reload'
   let wasControlled = !!(SW && SW.controller);
-  let rejected = false, requested = false, dismissed = false;
+  let rejected = false, failed = false, requested = false, dismissed = false;
   let held = false, settled = false, shown = false;
   let lastCheck = 0, activeVersion = null;
   let bodyObs = null, toastObs = null, settleTimer = 0, restoreTimer = 0, copyTimer = 0;
@@ -7763,7 +7768,8 @@ function hbWorkoutActive() {
   // ── banner (built here, placed just before the bottom nav) ──
   const css = document.createElement('style');
   css.textContent =
-    '#hb-update{position:fixed;left:14px;right:14px;max-width:520px;margin:0 auto;bottom:calc(var(--nav-h) + var(--safe-bottom) + 74px);z-index:150;background:var(--surface);border:2px solid var(--accent);border-radius:14px;padding:14px 16px;color:var(--text);box-shadow:0 8px 32px rgba(0,0,0,0.8),0 2px 8px rgba(0,0,0,0.4);opacity:0;transform:translateY(16px);transition:opacity 200ms ease-out,transform 200ms ease-out}' +
+    '#hb-update{position:fixed;left:14px;right:14px;max-width:520px;margin:0 auto;bottom:calc(var(--nav-h) + var(--safe-bottom) + 74px);z-index:150;box-sizing:border-box;max-height:50vh;max-height:50dvh;overflow-y:auto;overscroll-behavior:contain;visibility:hidden;background:var(--surface);border:2px solid var(--accent);border-radius:14px;padding:14px 16px;color:var(--text);box-shadow:0 8px 32px rgba(0,0,0,0.8),0 2px 8px rgba(0,0,0,0.4);opacity:0;transform:translateY(16px);transition:opacity 200ms ease-out,transform 200ms ease-out}' +
+    '#hb-update.hb-on{visibility:visible}' +
     '#hb-update.hb-in{opacity:1;transform:none}' +
     '#hb-update.hb-out{opacity:0;transform:none;transition:opacity 150ms}' +
     '#hb-update .hb-t{font-family:Oswald,sans-serif;font-weight:700;font-size:1rem}' +
@@ -7780,17 +7786,17 @@ function hbWorkoutActive() {
   box.id = 'hb-update';
   box.setAttribute('role', 'region');
   box.setAttribute('aria-label', 'App update');
-  box.hidden = true;
-  const status = document.createElement('div');
-  status.setAttribute('role', 'status');
+  box.inert = true;                                  // hidden = visibility:hidden + inert; the status node below stays in the DOM
+  const live = document.createElement('div');        // the one live region: announces, never shown
+  live.setAttribute('role', 'status');
+  live.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;';
   const tEl = document.createElement('div'); tEl.className = 'hb-t';
   const bEl = document.createElement('div'); bEl.className = 'hb-b';
-  status.append(tEl, bEl);
   const btnRow = document.createElement('div'); btnRow.className = 'hb-r';
   const later = document.createElement('button'); later.type = 'button'; later.className = 'btn-secondary'; later.textContent = 'Later';
   const go = document.createElement('button'); go.type = 'button'; go.className = 'btn-primary';
   btnRow.append(later, go);
-  box.append(status, btnRow);
+  box.append(live, tEl, bEl, btnRow);
   const nav = document.querySelector('nav.bottom-nav');
   nav.parentNode.insertBefore(box, nav);
 
@@ -7801,11 +7807,14 @@ function hbWorkoutActive() {
 
   function refreshAbout() {
     const ctl = SW && SW.controller;
-    let text = 'Setting up…', color = 'var(--warning)';
-    if (!SW || (rejected && !ctl)) { text = 'Not available in this browser'; color = 'var(--muted)'; }
+    let text = 'Setting up…', color = 'var(--warning)', bad = false;
+    if (!SW) { text = 'Not available in this browser'; color = 'var(--muted)'; }
     else if (ctl) { text = 'Ready'; color = 'var(--signal)'; }
+    else if (failed || rejected) { text = 'Offline setup failed, reconnect and reopen'; bad = true; }
     if (aOffline.textContent !== text) aOffline.textContent = text; // one polite announcement per change
     aDot.style.background = color;
+    aDot.style.borderRadius = bad ? '1px' : '50%';       // a diamond, not a circle: the failure is not colour only
+    aDot.style.transform = bad ? 'rotate(45deg)' : '';
     if (activeVersion) { aVersion.textContent = activeVersion; aVersion.style.fontFamily = 'ui-monospace,SFMono-Regular,Menlo,monospace'; aCopy.hidden = false; }
     else { aVersion.textContent = 'Unknown'; aVersion.style.fontFamily = 'Inter,sans-serif'; aCopy.hidden = true; }
     aRow.hidden = !(kind && dismissed);
@@ -7818,9 +7827,10 @@ function hbWorkoutActive() {
       if (!worker) return ok(null);
       const ch = new MessageChannel();
       let done = false;
-      const finish = v => { if (done) return; done = true; ch.port1.close(); ok(v); };
+      let timer = 0;
+      const finish = v => { if (done) return; done = true; clearTimeout(timer); ch.port1.close(); ok(v); };
       ch.port1.onmessage = e => finish(typeof e.data === 'string' && /^[0-9a-f]{12}$/.test(e.data) ? e.data : null);
-      setTimeout(() => finish(null), 2000);
+      timer = setTimeout(() => finish(null), 2000);
       try { worker.postMessage({ type: 'GET_VERSION' }, [ch.port2]); } catch (e) { finish(null); }
     });
   }
@@ -7832,21 +7842,28 @@ function hbWorkoutActive() {
   // ── focus: never dropped on <body> when the card goes away ──
   let lastOutside = null;
   document.addEventListener('focusin', e => { if (!box.contains(e.target)) lastOutside = e.target; });
+  const visible = el => !!el && el.isConnected && el.getClientRects().length > 0;
   function restoreFocus() {
     if (!box.contains(document.activeElement)) return;
     let t = lastOutside;
-    if (!t || !t.isConnected || box.contains(t) || t.offsetParent === null) {
-      t = [...document.querySelectorAll('h1')].find(h => h.offsetParent !== null) || null;
-      if (t) t.setAttribute('tabindex', '-1');
+    if (!visible(t) || box.contains(t)) {            // fall back to the current page container, never to <body>
+      t = document.querySelector('.page.active');
+      if (t) {
+        const id = t.id.replace(/^page-/, ''), tab = $('tab-' + id);
+        t.setAttribute('tabindex', '-1');
+        t.setAttribute('role', 'region');
+        t.setAttribute('aria-label', (tab && tab.textContent.trim()) || id);
+      }
     }
-    if (t) t.focus({ preventScroll: true }); else document.activeElement.blur();
+    if (t) t.focus({ preventScroll: true });
   }
 
   // ── show / hide ──
   const busy = () => hbWorkoutActive() || !!$('wm-overlay');
   function show() {
     const c = COPY[kind];
-    box.hidden = false;
+    box.inert = false;
+    box.classList.add('hb-on');
     tEl.textContent = c.title;
     bEl.textContent = c.body;
     setBusy(false);
@@ -7854,14 +7871,17 @@ function hbWorkoutActive() {
     void box.offsetWidth;
     box.classList.add('hb-in');
     shown = true;
+    // The status node is already in the tree; its text arrives a frame later so it is announced.
+    requestAnimationFrame(() => { if (shown && !busyOn) live.textContent = c.title + '. ' + c.body; });
     refreshAbout();
   }
   function hideNow() {
     if (box.contains(document.activeElement)) restoreFocus();
-    box.hidden = true;
-    box.classList.remove('hb-in', 'hb-out');
+    box.classList.remove('hb-on', 'hb-in', 'hb-out');
+    box.inert = true;
     tEl.textContent = '';
     bEl.textContent = '';
+    live.textContent = '';
     shown = false;
     refreshAbout();
   }
@@ -7884,12 +7904,12 @@ function hbWorkoutActive() {
     later.textContent = 'Later';
     go.textContent = on ? 'Updating…' : (kind ? COPY[kind].go : 'Update');
     aBtn.textContent = on ? 'Updating…' : (kind ? COPY[kind].go : 'Update');
-    if (shown) { // the status region says it too
-      tEl.textContent = on ? 'Updating…' : COPY[kind].title;
-      bEl.textContent = on ? '' : COPY[kind].body;
-    }
+    // The visible title and body (and so the card height) do not change; the hidden status says it once.
+    // Clearing it when the buttons come back is not announced.
+    live.textContent = on ? 'Updating…' : '';
     // No takeover after 10 s: the buttons quietly come back; the update still applies on the next full close.
-    if (on) restoreTimer = setTimeout(() => setBusy(false), 10000);
+    // `requested` is dropped too, so a later takeover is not mistaken for this tap.
+    if (on) restoreTimer = setTimeout(() => { requested = false; setBusy(false); }, 10000);
   }
 
   // The one place that decides whether the notice may be on screen.
@@ -7900,7 +7920,7 @@ function hbWorkoutActive() {
     if (busy()) {           // workout running: nothing at all, and hold for later
       held = true; settled = false;
       clearTimeout(settleTimer); settleTimer = 0;
-      if (shown || !box.hidden) hideNow();
+      if (shown || box.classList.contains('hb-on')) hideNow();
       return;
     }
     if (dismissed || shown) return;
@@ -7972,17 +7992,22 @@ function hbWorkoutActive() {
     if (kind !== 'update') { kind = 'update'; dismissed = false; }
     evaluate();
   }
-  function track(r) {
-    r.addEventListener('updatefound', () => {
-      const w = r.installing;
-      if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') consider(); });
+  function watchInstall(w) {
+    w.addEventListener('statechange', () => {
+      if (w.state === 'installed') consider();
+      else if (w.state === 'redundant' && !SW.controller) { failed = true; refreshAbout(); } // first install failed
     });
+  }
+  function track(r) {
+    if (r.installing) watchInstall(r.installing);
+    else if (!r.waiting && !r.active && !SW.controller) { failed = true; refreshAbout(); }
+    r.addEventListener('updatefound', () => { if (r.installing) watchInstall(r.installing); });
     consider();                                       // already waiting at launch
   }
   function onControllerChange() {
     const first = !wasControlled;
     wasControlled = true;
-    loadVersion();
+    if (first) loadVersion();                         // an old page keeps showing the version it booted with
     if (requested && !hbWorkoutActive() && reg && reg.scope === APP_SCOPE) { location.reload(); return; }
     if (first && !requested) {                        // first install claimed this page: no reload
       if (!hbWorkoutActive()) mToast('Ready to use offline', 'success');
@@ -7991,7 +8016,7 @@ function hbWorkoutActive() {
     }
     kind = 'reload'; dismissed = false; requested = false; waiting = null;  // updated elsewhere, or a workout began
     setBusy(false);
-    if (shown || !box.hidden) hideNow();             // re-render with the reload copy
+    if (shown || box.classList.contains('hb-on')) hideNow(); // re-render with the reload copy
     evaluate();
   }
   function check() {                                  // no timer: launch and return-to-app only
