@@ -67,7 +67,9 @@ async function collect(page) {
           progressWorkouts: text('hm-workouts-p'),
           progressCalories: text('hm-calories-p'),
           weekBars: text('m-week-bars'),
+          weekBarsHtml: document.getElementById('m-week-bars').innerHTML,
           weekLabels: text('m-week-labels'),
+          adherence: text('m-adherence-badge'),
           grade: text('m-grade-content'),
           milestones: text('m-milestones'),
           logEntryCount: log.length,
@@ -91,6 +93,13 @@ async function exportPayload(page) {
   };
 }
 
+// The only external hosts the shipped app asks for today (K1: Google Fonts). Requests are aborted.
+const FONT_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
+function expectOnlyFontHosts(blocked) {
+  const hosts = new Set(blocked.map((u) => new URL(u).hostname));
+  for (const h of hosts) expect(FONT_HOSTS.has(h), `unexpected external host ${h}`).toBe(true);
+}
+
 test.describe('characterisation', () => {
   test('app boots on the seeded profile with no external requests @smoke', async ({
     appPage,
@@ -104,7 +113,7 @@ test.describe('characterisation', () => {
     expect(await appPage.evaluate(() => new Date().toISOString())).toBe('2026-11-01T12:00:00.000Z');
     expect(errors).toEqual([]);
     // Only the Google Fonts stylesheet is expected today (K1); it is aborted, never fetched.
-    expect(blocked.every((u) => u.startsWith('https://fonts.g'))).toBe(true);
+    expectOnlyFontHosts(blocked);
   });
 
   test('goldens: history, PRs, last performance, weekly sets, recovery, progress', async ({
@@ -121,6 +130,30 @@ test.describe('characterisation', () => {
     checkGolden('progress', c.progress);
   });
 
+  test('golden: streak and week bars on a day with a 4-day streak', async ({
+    appPage,
+    siteURL,
+  }) => {
+    // 2026-04-10 is the last day of the fixture's longest run of consecutive training days (4).
+    await appPage.clock.setFixedTime(Date.parse('2026-04-10T12:00:00Z'));
+    await openSeeded(appPage, siteURL);
+    const c = await appPage.evaluate(() => {
+      mRenderHome();
+      mRenderProgress();
+      const text = (id) =>
+        (document.getElementById(id)?.textContent ?? '').replace(/\s+/g, ' ').trim();
+      return {
+        now: new Date().toISOString(),
+        homeStreak: text('hm-streak'),
+        weekBarsHtml: document.getElementById('m-week-bars').innerHTML,
+        weekLabels: text('m-week-labels'),
+        adherence: text('m-adherence-badge'),
+      };
+    });
+    expect(c.homeStreak).toBe('4');
+    checkGolden('progress-streak', c);
+  });
+
   test('golden: export payload and filename', async ({ appPage, siteURL }) => {
     await openSeeded(appPage, siteURL);
     const { filename, payload } = await exportPayload(appPage);
@@ -131,6 +164,18 @@ test.describe('characterisation', () => {
       filename,
       header,
       keyOrder: Object.keys(payload),
+      // Readable digest next to the hash, so a mismatch shows what moved.
+      digest: Object.fromEntries(
+        Object.entries(payload)
+          .filter(([k]) => !k.startsWith('_'))
+          .map(([k, v]) => [
+            k,
+            Array.isArray(v)
+              ? { type: 'array', length: v.length }
+              : { type: 'object', keys: Object.keys(v).length },
+          ]),
+      ),
+      entryCount: payload.workouts.reduce((n, w) => n + w.exercises.length, 0),
       payloadSha256: createHash('sha256').update(stableStringify(payload)).digest('hex'),
     });
   });
@@ -176,6 +221,7 @@ test.describe('characterisation', () => {
     const a = await run();
     const b = await run();
     expect(b).toEqual(a);
+    expectOnlyFontHosts(blocked);
   });
 
   test('state survives reload unchanged (load does not mutate stored data)', async ({

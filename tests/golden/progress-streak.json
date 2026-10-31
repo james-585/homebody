@@ -1,0 +1,7 @@
+{
+  "adherence": "",
+  "homeStreak": "4",
+  "now": "2026-04-10T12:00:00.000Z",
+  "weekBarsHtml": "<div class=\"week-bar-wrap\" style=\"flex: 1 1 0%;\"><div class=\"week-bar\" style=\"height:4px;min-height:4px\"></div></div><div class=\"week-bar-wrap\" style=\"flex: 1 1 0%;\"><div class=\"week-bar\" style=\"height:43px;min-height:4px\"><div class=\"week-bar-fill\" style=\"height:100%\"></div></div></div><div class=\"week-bar-wrap\" style=\"flex: 1 1 0%;\"><div class=\"week-bar\" style=\"height:18px;min-height:4px\"><div class=\"week-bar-fill\" style=\"height:100%\"></div></div></div><div class=\"week-bar-wrap\" style=\"flex: 1 1 0%;\"><div class=\"week-bar\" style=\"height:27px;min-height:4px\"><div class=\"week-bar-fill\" style=\"height:100%\"></div></div></div><div class=\"week-bar-wrap\" style=\"flex: 1 1 0%;\"><div class=\"week-bar today\" style=\"height:22px;min-height:4px\"><div class=\"week-bar-fill\" style=\"height:100%\"></div></div></div><div class=\"week-bar-wrap\" style=\"flex: 1 1 0%;\"><div class=\"week-bar\" style=\"height:4px;min-height:4px\"></div></div><div class=\"week-bar-wrap\" style=\"flex: 1 1 0%;\"><div class=\"week-bar\" style=\"height:26px;min-height:4px\"><div class=\"week-bar-fill\" style=\"height:100%\"></div></div></div>",
+  "weekLabels": "MTWTFSS"
+}
