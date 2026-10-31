@@ -1,8 +1,9 @@
 // T4b: the first update after M1 (AC3) and multi-tab behaviour. The pre-M1 build is served from
 // the frozen snapshot (docs/reference/pre-m1-d642b2b), the current shell is "deployed" over it
 // into the same site directory (one origin), and the old page is driven through its own banner.
-// No fixed sleeps: every wait is on an observable condition. Chromium only (the old page asks
-// Google Fonts, which are blocked and counted; the zero-external assertion is for the post-upgrade page).
+// No fixed sleeps: every wait is on an observable condition. Chromium only: the old page's
+// timing is driven by a fake clock (its 60 s poll), and WebKit was not tried. The old page also asks
+// Google Fonts (blocked and counted), so the zero-external assertion is for the post-upgrade page.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,7 +32,7 @@ const test = base.extend({
   // old = the frozen pre-M1 build, cur = the shipped shell (the "new" release), next = cur + one comment.
   builds: [
     async ({ browserName }, use) => {
-      void browserName;
+      if (browserName !== 'chromium') throw new Error('upgrade.spec.mjs is Chromium only');
       const old = await buildPreM1();
       const cur = await buildCurrent();
       const next = await buildVariant();
@@ -47,7 +48,10 @@ const test = base.extend({
     const site = await createSite(start.dir);
     await use(site);
     await context.close(); // server.close() waits for idle connections: drop the browser side first
-    await site.close().catch(() => {}); // already closed by a test that went offline
+    // A test that went offline already closed the server; ignore only that.
+    await site.close().catch((err) => {
+      if (err?.code !== 'ERR_SERVER_NOT_RUNNING') throw err;
+    });
   },
 });
 test.use({ serviceWorkers: 'allow' });
@@ -166,6 +170,8 @@ test('AC3: pre-M1 -> current through the old banner: no data lost, no second ban
   await expect
     .poll(async () => {
       const s = await regState(page);
+      // replies counts GET_VERSION answers: a waiting worker has been judged once the page got
+      // both (running + waiting), so "no card" below is a real result, not a page still deciding.
       return !s.installing && (!s.waiting || s.replies >= 2);
     })
     .toBe(true);
@@ -342,7 +348,6 @@ async function finishWorkout(page) {
   await expect(page.locator('#m-toasts')).toContainText('Workout saved');
 }
 
-const settledOn = (page) => regState(page);
 async function deployToBoth(site, build, ...pages) {
   const before = await Promise.all(pages.map((p) => p.evaluate(() => globalThis.__replies)));
   await site.deploy(build.dir);
@@ -350,7 +355,7 @@ async function deployToBoth(site, build, ...pages) {
     await (await globalThis.navigator.serviceWorker.getRegistration()).update();
   });
   for (const [i, p] of pages.entries()) {
-    await expect.poll(async () => (await settledOn(p)).waiting).toBe(true);
+    await expect.poll(async () => (await regState(p)).waiting).toBe(true);
     await expect
       .poll(() => p.evaluate(() => globalThis.__replies))
       .toBeGreaterThanOrEqual(before[i] + 2);
