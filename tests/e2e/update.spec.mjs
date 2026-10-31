@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect as baseExpect } from '@playwright/test';
 import { seedData } from './helpers/seed.mjs';
 import {
   blockExternal,
@@ -15,6 +15,9 @@ import {
   installProbes,
   seedOrigin,
 } from './helpers/deploy.mjs';
+
+// A first show waits for the toast stack and a settle time (4 s), so waits are longer than the default.
+const expect = baseExpect.configure({ timeout: 15000 });
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const ACTIVE = JSON.parse(
@@ -625,7 +628,7 @@ test.describe('FAB and sheets (390x844, touch)', () => {
     expect(await page.evaluate(() => globalThis.__marker)).toBe('alive');
   });
 
-  test('after Later or Escape focus returns to where it was, else the page container', async ({
+  test('after Later or Escape focus returns to where it was, else the active nav tab', async ({
     context,
     page,
     site,
@@ -635,16 +638,20 @@ test.describe('FAB and sheets (390x844, touch)', () => {
     await page.evaluate(() => globalThis.mShowPage('progress'));
     await deployAndSettle(page, site, builds.v2);
     await expect(banner(page)).toBeVisible();
-    // No earlier focus: the current page container, with a name (no headings are added).
+    // No earlier focus: the active bottom-nav tab (named, always present); page containers get nothing.
     await page.locator(LATER).focus();
     await page.keyboard.press('Escape');
     await expect(banner(page)).toBeHidden();
+    expect(await page.evaluate(() => globalThis.document.activeElement.id)).toBe('tab-progress');
     expect(
-      await page.evaluate(() => {
-        const a = globalThis.document.activeElement;
-        return [a.id, a.getAttribute('aria-label'), a.getAttribute('tabindex')];
-      }),
-    ).toEqual(['page-progress', 'Progress', '-1']);
+      await page.evaluate(
+        () =>
+          [...globalThis.document.querySelectorAll('.page')].filter(
+            (p) =>
+              p.hasAttribute('role') || p.hasAttribute('aria-label') || p.hasAttribute('tabindex'),
+          ).length,
+      ),
+    ).toBe(0);
   });
 
   test('after Later, focus returns to the element that had it', async ({
@@ -834,7 +841,7 @@ test.describe('offline setup that fails', () => {
     await page.goto(site.url + 'index.html');
     await showProfile(page);
     await expect(page.locator('#hb-about-offline-text')).toHaveText(
-      'Offline setup failed, reconnect and reopen',
+      'Setup failed, reconnect and reopen',
     );
     // Not colour alone: the marker is a diamond, not the round dot.
     await expect(page.locator('#hb-about-dot')).toHaveCSS('border-radius', '1px');
@@ -846,7 +853,7 @@ test.describe('offline setup that fails', () => {
     await page.goto(site.url + 'index.html');
     await showProfile(page);
     await expect(page.locator('#hb-about-offline-text')).toHaveText(
-      'Offline setup failed, reconnect and reopen',
+      'Setup failed, reconnect and reopen',
     );
   });
 });
@@ -867,4 +874,90 @@ test('after an update elsewhere the old page still shows the version it booted w
   await expect(banner(page).locator('.hb-t')).toHaveText('HomeBody updated');
   await showProfile(page);
   await expect(page.locator('#hb-about-version')).toHaveText(builds.v1.version);
+});
+
+// ---- Amendment 4 ----
+
+test('aria-current marks the active bottom-nav tab and follows mShowPage', async ({
+  context,
+  page,
+  site,
+}) => {
+  await launch(context, page, site);
+  const current = () =>
+    page.evaluate(() =>
+      [...globalThis.document.querySelectorAll('.nav-tab')]
+        .filter((t) => t.getAttribute('aria-current') === 'page')
+        .map((t) => t.id),
+    );
+  expect(await current()).toEqual(['tab-train']);
+  for (const id of ['progress', 'plans', 'profile', 'train']) {
+    await page.evaluate((p) => globalThis.mShowPage(p), id);
+    expect(await current()).toEqual([`tab-${id}`]);
+  }
+});
+
+test.describe('landscape at 200% text', () => {
+  test.use({ viewport: { width: 812, height: 375 } });
+
+  test('the button row is pinned: both buttons are fully visible without scrolling the card', async ({
+    context,
+    page,
+    site,
+    builds,
+  }) => {
+    await launch(context, page, site);
+    await deployAndSettle(page, site, builds.v2);
+    await expect(banner(page)).toBeVisible();
+    await page.evaluate(() => (globalThis.document.documentElement.style.fontSize = '32px'));
+    const m = await page.evaluate(() => {
+      const d = globalThis.document;
+      const card = d.getElementById('hb-update');
+      const c = card.getBoundingClientRect();
+      const out = {
+        scrollTop: card.scrollTop,
+        card: [c.top, c.bottom],
+        overflows: card.scrollHeight > card.clientHeight,
+      };
+      for (const q of ['.btn-secondary', '.btn-primary']) {
+        const r = card.querySelector(q).getBoundingClientRect();
+        const el = d.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        out[q] = { top: r.top, bottom: r.bottom, hit: card.querySelector(q).contains(el) };
+      }
+      return out;
+    });
+    expect(m.overflows).toBe(true); // the body really does need to scroll at this size
+    expect(m.scrollTop).toBe(0);
+    for (const q of ['.btn-secondary', '.btn-primary']) {
+      expect(m[q].top).toBeGreaterThanOrEqual(m.card[0]);
+      expect(m[q].bottom).toBeLessThanOrEqual(m.card[1]);
+      expect(m[q].bottom).toBeLessThanOrEqual(375);
+      expect(m[q].hit).toBe(true);
+    }
+  });
+});
+
+test('a toast on screen when the card is due: the card waits until the stack is empty', async ({
+  context,
+  page,
+  site,
+  builds,
+}) => {
+  await launch(context, page, site);
+  // A toast that stays for 7 s, longer than the 4 s settle time.
+  await page.evaluate(() => {
+    const t = globalThis.document.createElement('div');
+    t.className = 'm-toast show';
+    t.textContent = 'Test toast';
+    globalThis.document.getElementById('m-toasts').appendChild(t);
+    setTimeout(() => {
+      globalThis.__toastGone = globalThis.performance.now();
+      t.remove();
+    }, 7000);
+  });
+  await deployAndSettle(page, site, builds.v2);
+  await expect(banner(page)).toBeVisible({ timeout: 20000 });
+  const [shown] = await bannerLog(page);
+  expect(shown.toasts).toBe(0);
+  expect(shown.t).toBeGreaterThanOrEqual(await page.evaluate(() => globalThis.__toastGone));
 });
