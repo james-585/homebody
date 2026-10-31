@@ -93,11 +93,10 @@ async function exportPayload(page) {
   };
 }
 
-// The only external hosts the shipped app asks for today (K1: Google Fonts). Requests are aborted.
-const FONT_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
-function expectOnlyFontHosts(blocked) {
+// Fonts are self-hosted since T3, so the app asks for no external host at all.
+function expectNoExternalHosts(blocked) {
   const hosts = new Set(blocked.map((u) => new URL(u).hostname));
-  for (const h of hosts) expect(FONT_HOSTS.has(h), `unexpected external host ${h}`).toBe(true);
+  expect([...hosts]).toEqual([]);
 }
 
 test.describe('characterisation', () => {
@@ -112,8 +111,7 @@ test.describe('characterisation', () => {
     expect(await appPage.evaluate(() => state.workouts.length)).toBe(149);
     expect(await appPage.evaluate(() => new Date().toISOString())).toBe('2026-11-01T12:00:00.000Z');
     expect(errors).toEqual([]);
-    // Only the Google Fonts stylesheet is expected today (K1); it is aborted, never fetched.
-    expectOnlyFontHosts(blocked);
+    expectNoExternalHosts(blocked);
   });
 
   test('goldens: history, PRs, last performance, weekly sets, recovery, progress', async ({
@@ -221,7 +219,7 @@ test.describe('characterisation', () => {
     const a = await run();
     const b = await run();
     expect(b).toEqual(a);
-    expectOnlyFontHosts(blocked);
+    expectNoExternalHosts(blocked);
   });
 
   test('state survives reload unchanged (load does not mutate stored data)', async ({
