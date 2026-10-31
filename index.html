@@ -190,7 +190,10 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overs
 .plan-card-footer{padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
 .plan-author{font-size:0.7rem;color:var(--muted)}
 /* PROFILE */
-#page-profile{padding-bottom:12px}
+#page-profile{padding-bottom:calc(var(--nav-h) + var(--safe-bottom) + 74px)}
+/* FAB tray: only the button and the visible menu items take taps (the empty tray box used to swallow them) */
+#m-fab-tray{pointer-events:none}
+#m-fab-main{pointer-events:auto}
 .profile-hero{background:linear-gradient(135deg,var(--surface) 0%,#0a1828 100%);padding:20px 18px 18px;text-align:center}
 .profile-avatar{width:72px;height:72px;border-radius:50%;background:var(--surface2);border:3px solid var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto 10px;font-family:'Oswald',sans-serif;font-weight:700;font-size:1.8rem;color:var(--accent)}
 .profile-name{font-family:'Oswald',sans-serif;font-weight:700;font-size:1.3rem;letter-spacing:0.03em;text-transform:uppercase}
@@ -700,11 +703,11 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overs
       <!-- About (T4a, docs/design/update-notice.md) -->
       <div class="card" id="hb-about" style="margin-top:10px;">
         <div class="card-title">About</div>
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:48px;border-bottom:1px solid var(--border);">
+        <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:0 8px;min-height:48px;border-bottom:1px solid var(--border);">
           <span style="font-size:0.85rem;font-weight:500;color:var(--text);">Version</span>
-          <span style="display:flex;align-items:center;gap:8px;min-width:0;">
-            <span id="hb-about-version" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:0.85rem;letter-spacing:0.02em;color:var(--text);overflow-wrap:anywhere;">Unknown</span>
-            <button type="button" id="hb-about-copy" class="btn-secondary" aria-label="Copy version" hidden style="min-height:44px;min-width:64px;padding:0 12px;">Copy</button>
+          <span style="display:flex;align-items:center;gap:8px;">
+            <span id="hb-about-version" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:0.85rem;letter-spacing:0.02em;color:var(--text);white-space:nowrap;">Unknown</span>
+            <button type="button" id="hb-about-copy" class="btn-secondary" aria-label="Copy version" hidden style="min-height:44px;min-width:84px;padding:0 12px;">Copy</button>
             <span id="hb-about-copy-status" role="status" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;"></span>
           </span>
         </div>
@@ -7745,7 +7748,7 @@ function hbWorkoutActive() {
   const APP_SCOPE = new URL('./', document.baseURI).href;
   const COPY = {
     update: { title: 'Update ready', body: 'Reloads HomeBody. Your history is kept.', go: 'Update', line: 'Update ready' },
-    reload: { title: 'HomeBody was updated', body: 'Updated in another window. Reload to use the new version.', go: 'Reload', line: 'Updated in another window' },
+    reload: { title: 'HomeBody updated', body: 'Reload to use the new version.', go: 'Reload', line: 'Updated, reload to use it' },
   };
   const $ = id => document.getElementById(id);
   const reduced = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -7760,7 +7763,7 @@ function hbWorkoutActive() {
   // ── banner (built here, placed just before the bottom nav) ──
   const css = document.createElement('style');
   css.textContent =
-    '#hb-update{position:fixed;left:14px;right:14px;max-width:520px;margin:0 auto;bottom:calc(var(--nav-h) + var(--safe-bottom) + 74px);z-index:9590;background:var(--surface);border:1.5px solid var(--accent);border-radius:14px;padding:14px 16px;color:var(--text);box-shadow:0 8px 32px rgba(0,0,0,0.8),0 2px 8px rgba(0,0,0,0.4);opacity:0;transform:translateY(16px);transition:opacity 200ms ease-out,transform 200ms ease-out}' +
+    '#hb-update{position:fixed;left:14px;right:14px;max-width:520px;margin:0 auto;bottom:calc(var(--nav-h) + var(--safe-bottom) + 74px);z-index:150;background:var(--surface);border:2px solid var(--accent);border-radius:14px;padding:14px 16px;color:var(--text);box-shadow:0 8px 32px rgba(0,0,0,0.8),0 2px 8px rgba(0,0,0,0.4);opacity:0;transform:translateY(16px);transition:opacity 200ms ease-out,transform 200ms ease-out}' +
     '#hb-update.hb-in{opacity:1;transform:none}' +
     '#hb-update.hb-out{opacity:0;transform:none;transition:opacity 150ms}' +
     '#hb-update .hb-t{font-family:Oswald,sans-serif;font-weight:700;font-size:1rem}' +
@@ -7768,6 +7771,7 @@ function hbWorkoutActive() {
     '#hb-update .hb-r{display:flex;gap:8px;margin-top:12px}' +
     '#hb-update .hb-r button{flex:1 1 0;min-height:48px}' +
     '#hb-update button:disabled{opacity:0.6;cursor:default}' +
+    '#hb-update button[aria-disabled=true],#hb-about button[aria-disabled=true]{pointer-events:none}' +
     '#hb-update button:focus-visible,#hb-about button:focus-visible{outline:2px solid var(--text);outline-offset:2px}' +
     '@media (prefers-reduced-motion:reduce){#hb-update,#hb-update.hb-in,#hb-update.hb-out{transition:none;transform:none}}';
   document.head.appendChild(css);
@@ -7802,10 +7806,10 @@ function hbWorkoutActive() {
     else if (ctl) { text = 'Ready'; color = 'var(--signal)'; }
     if (aOffline.textContent !== text) aOffline.textContent = text; // one polite announcement per change
     aDot.style.background = color;
-    if (activeVersion) { aVersion.textContent = activeVersion; aCopy.hidden = false; }
-    else { aVersion.textContent = 'Unknown'; aCopy.hidden = true; }
+    if (activeVersion) { aVersion.textContent = activeVersion; aVersion.style.fontFamily = 'ui-monospace,SFMono-Regular,Menlo,monospace'; aCopy.hidden = false; }
+    else { aVersion.textContent = 'Unknown'; aVersion.style.fontFamily = 'Inter,sans-serif'; aCopy.hidden = true; }
     aRow.hidden = !(kind && dismissed);
-    if (kind) { aLabel.textContent = COPY[kind].line; if (!aBtn.disabled) aBtn.textContent = COPY[kind].go; }
+    if (kind) { aLabel.textContent = COPY[kind].line; if (!busyOn) aBtn.textContent = COPY[kind].go; }
   }
 
   // ── asking a worker for its release version (local message, no network) ──
@@ -7825,6 +7829,19 @@ function hbWorkoutActive() {
     getVersion(SW.controller).then(v => { activeVersion = v; refreshAbout(); });
   }
 
+  // ── focus: never dropped on <body> when the card goes away ──
+  let lastOutside = null;
+  document.addEventListener('focusin', e => { if (!box.contains(e.target)) lastOutside = e.target; });
+  function restoreFocus() {
+    if (!box.contains(document.activeElement)) return;
+    let t = lastOutside;
+    if (!t || !t.isConnected || box.contains(t) || t.offsetParent === null) {
+      t = [...document.querySelectorAll('h1')].find(h => h.offsetParent !== null) || null;
+      if (t) t.setAttribute('tabindex', '-1');
+    }
+    if (t) t.focus({ preventScroll: true }); else document.activeElement.blur();
+  }
+
   // ── show / hide ──
   const busy = () => hbWorkoutActive() || !!$('wm-overlay');
   function show() {
@@ -7840,6 +7857,7 @@ function hbWorkoutActive() {
     refreshAbout();
   }
   function hideNow() {
+    if (box.contains(document.activeElement)) restoreFocus();
     box.hidden = true;
     box.classList.remove('hb-in', 'hb-out');
     tEl.textContent = '';
@@ -7855,12 +7873,21 @@ function hbWorkoutActive() {
     setTimeout(() => { if (!shown) hideNow(); }, 150);
     refreshAbout();
   }
+  let busyOn = false;
   function setBusy(on) {
     clearTimeout(restoreTimer);
-    later.disabled = go.disabled = aBtn.disabled = on;
+    busyOn = on;
+    later.disabled = on;                       // only Later is dimmed
+    for (const b of [go, aBtn]) { // the primary keeps full opacity; taps are blocked, not disabled
+      if (on) b.setAttribute('aria-disabled', 'true'); else b.removeAttribute('aria-disabled');
+    }
     later.textContent = 'Later';
     go.textContent = on ? 'Updating…' : (kind ? COPY[kind].go : 'Update');
     aBtn.textContent = on ? 'Updating…' : (kind ? COPY[kind].go : 'Update');
+    if (shown) { // the status region says it too
+      tEl.textContent = on ? 'Updating…' : COPY[kind].title;
+      bEl.textContent = on ? '' : COPY[kind].body;
+    }
     // No takeover after 10 s: the buttons quietly come back; the update still applies on the next full close.
     if (on) restoreTimer = setTimeout(() => setBusy(false), 10000);
   }
@@ -7911,15 +7938,16 @@ function hbWorkoutActive() {
 
   // ── actions ──
   function onGo() {
+    if (busyOn) return;                              // aria-disabled: Enter/Space must not re-fire
     if (hbWorkoutActive()) { evaluate(); return; }   // re-check at tap time
-    if (kind === 'reload') { location.reload(); return; }
+    if (kind === 'reload') { setBusy(true); location.reload(); return; }
     const w = (reg && reg.waiting) || waiting;
     if (!w) { kind = null; evaluate(); return; }
     requested = true;
     setBusy(true);
     w.postMessage({ type: 'SKIP_WAITING' });
   }
-  function onLater() { dismissed = true; fadeOut(); }
+  function onLater() { restoreFocus(); dismissed = true; fadeOut(); }
   go.addEventListener('click', onGo);
   aBtn.addEventListener('click', onGo);
   later.addEventListener('click', onLater);
