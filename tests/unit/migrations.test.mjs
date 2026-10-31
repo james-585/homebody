@@ -1,174 +1,16 @@
-// Migration-test harness (T1). Later tasks (T6, T10, T12) only add migrations to MIGRATIONS and
-// call `checkInvariants`; the invariants below must hold for every fixture in
+// Migration-test harness checks (T1). The harness itself lives in helpers/migration-harness.mjs so
+// later tests can import it without re-running these tests. Later tasks (T6, T10, T12) add real
+// migrations to MIGRATIONS below; every invariant must then hold for every fixture in
 // tests/fixtures/legacy/ and tests/fixtures/synthetic/.
-//
-// Migration contract (ADR 0002): a pure function object { from, to, migrate(doc) } returning a new
-// document, with no I/O and no clock. The document carries its version in `schemaVersion`
-// (absent means 1, the shipped format). The runner applies migrations in order and never mutates
-// its input.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import {
-  SYNTHETIC_DIR,
-  listFiles,
-  loadAllFixtures,
-  stripHeader,
-} from './helpers/load-fixtures.mjs';
+import { SYNTHETIC_DIR, listFiles, loadAllFixtures } from './helpers/load-fixtures.mjs';
+import { applyMigrations, checkInvariants, toStoreDoc } from './helpers/migration-harness.mjs';
 
 /** The real migrations. Empty in T1: schema 1 is the shipped format. */
-export const MIGRATIONS = [];
-
-export const getVersion = (doc) => doc.schemaVersion ?? 1;
-
-/** Apply every migration whose `from` equals the current version, in order. Pure; clones input. */
-export function applyMigrations(migrations, doc) {
-  let cur = structuredClone(doc);
-  const ordered = [...migrations].sort((a, b) => a.from - b.from);
-  for (const m of ordered) {
-    if (getVersion(cur) === m.from) {
-      cur = m.migrate(structuredClone(cur));
-      if (getVersion(cur) !== m.to) cur.schemaVersion = m.to;
-    }
-  }
-  return cur;
-}
-
-const SET_FIELDS = ['sets', 'reps', 'weight', 'time', 'trackType'];
-
-/** True if every own key of `a` is present in `b` (values are not compared). */
-function keysKept(a, b) {
-  if (!a || typeof a !== 'object' || Array.isArray(a)) return true;
-  return b && typeof b === 'object' && Object.keys(a).every((k) => k in b);
-}
-
-/** Fixtures that are a stored store document (the `workouts`/`personalRecords`/... blob). */
-export function toStoreDoc(fixture) {
-  const d = fixture.data;
-  return d && Array.isArray(d.workouts) ? stripHeader(d) : null;
-}
-
-/** Invariants for one store document. Returns a list of human-readable violations. */
-export function documentViolations(migrations, input) {
-  const v = [];
-  const frozen = JSON.stringify(input);
-  const out = applyMigrations(migrations, input);
-  if (JSON.stringify(input) !== frozen) v.push('input document was mutated');
-
-  const before = input.workouts;
-  const after = out.workouts;
-  if (!Array.isArray(after)) return [...v, 'workouts is not an array after migration'];
-
-  // no workout lost, ids unique
-  if (after.length !== before.length) v.push(`workout count ${before.length} -> ${after.length}`);
-  const ids = after.map((w) => w.id);
-  if (new Set(ids).size !== ids.length) v.push('workout ids are not unique');
-  const afterIds = new Set(ids);
-  for (const w of before) if (!afterIds.has(w.id)) v.push(`workout ${w.id} lost`);
-
-  const byId = new Map(after.map((w) => [w.id, w]));
-  for (const w of before) {
-    const o = byId.get(w.id);
-    if (!o) continue;
-    // workout-level scalars and unknown fields
-    if (!keysKept(w, o)) v.push(`workout ${w.id} lost a field`);
-    for (const f of [
-      'date',
-      'totalVolume',
-      'totalSets',
-      'calories',
-      'duration',
-      'bodyWeight',
-      'rpe',
-      'notes',
-    ]) {
-      if (f in w && JSON.stringify(w[f]) !== JSON.stringify(o[f]))
-        v.push(`workout ${w.id}.${f} changed`);
-    }
-    if (o.exercises.length !== w.exercises.length) {
-      v.push(`workout ${w.id} exercise count ${w.exercises.length} -> ${o.exercises.length}`);
-      continue;
-    }
-    w.exercises.forEach((e, i) => {
-      const oe = o.exercises[i];
-      for (const f of SET_FIELDS) {
-        if (f in e && JSON.stringify(e[f]) !== JSON.stringify(oe[f])) {
-          v.push(
-            `workout ${w.id} entry ${i} ${f}: ${JSON.stringify(e[f])} -> ${JSON.stringify(oe[f])}`,
-          );
-        }
-      }
-      if (!keysKept(e, oe)) v.push(`workout ${w.id} entry ${i} lost a field`);
-    });
-  }
-
-  // top level keys and unknown fields on other records
-  for (const k of Object.keys(input)) if (!(k in out)) v.push(`top-level key ${k} lost`);
-  if (input.profile && !keysKept(input.profile, out.profile)) v.push('profile lost a field');
-  for (const key of ['bodyMetrics', 'userPlans']) {
-    (input[key] ?? []).forEach((r, i) => {
-      if (!keysKept(r, out[key]?.[i])) v.push(`${key}[${i}] lost a field`);
-    });
-  }
-  if ((out.bodyMetrics ?? []).length !== (input.bodyMetrics ?? []).length)
-    v.push('bodyMetrics rows lost');
-  if ((out.userPlans ?? []).length !== (input.userPlans ?? []).length) v.push('userPlans lost');
-  if ((out.favourites ?? []).length < (input.favourites ?? []).length) v.push('favourites lost');
-  if (
-    Object.keys(out.personalRecords ?? {}).length === 0 &&
-    Object.keys(input.personalRecords ?? {}).length > 0
-  ) {
-    v.push('personal records lost');
-  }
-
-  // idempotence: running the chain again changes nothing
-  const twice = applyMigrations(migrations, out);
-  if (JSON.stringify(twice) !== JSON.stringify(out))
-    v.push('not idempotent: second run changed the document');
-  return v;
-}
-
-/** Invariants for the active-workout blob (hb_active_workout): preserved set for set. */
-export function activeWorkoutViolations(migrations, input) {
-  const v = [];
-  const out = applyMigrations(migrations, input);
-  if (!Array.isArray(out.exercises) || out.exercises.length !== input.exercises.length) {
-    return ['active workout exercises lost'];
-  }
-  input.exercises.forEach((e, i) => {
-    const oe = out.exercises[i];
-    if (oe.sets.length !== e.sets.length) v.push(`exercise ${i} set count changed`);
-    e.sets.forEach((s, j) => {
-      for (const f of Object.keys(s)) {
-        if (JSON.stringify(s[f]) !== JSON.stringify(oe.sets[j]?.[f]))
-          v.push(`exercise ${i} set ${j} ${f} changed`);
-      }
-    });
-  });
-  for (const f of ['startTime', 'elapsed', 'planCtx']) {
-    if (JSON.stringify(input[f]) !== JSON.stringify(out[f])) v.push(`active workout ${f} changed`);
-  }
-  return v;
-}
-
-/**
- * Run every invariant over every fixture. Store migrations apply to store documents only; the
- * active-workout blob has its own (separate) list, `activeMigrations`, empty until T10.
- * Returns [{fixture, violations}] for failures only. */
-export function checkInvariants(migrations, fixtures = loadAllFixtures(), activeMigrations = []) {
-  const failures = [];
-  for (const fx of fixtures) {
-    const doc = toStoreDoc(fx);
-    const violations = doc
-      ? documentViolations(migrations, doc)
-      : fx.file.startsWith('hb_active_workout')
-        ? activeWorkoutViolations(activeMigrations, fx.data)
-        : [`fixture ${fx.file} is neither a store document nor an active workout`];
-    if (violations.length) failures.push({ fixture: `${fx.dir}/${fx.file}`, violations });
-  }
-  return failures;
-}
+const MIGRATIONS = [];
 
 test('there are fixtures to run against, from both folders', () => {
   const all = loadAllFixtures();
@@ -211,43 +53,68 @@ test('every synthetic fixture has a README entry', () => {
 
 // ---- the harness must be able to fail --------------------------------------------------------
 
-const bump = { from: 1, to: 2, migrate: (d) => ({ ...d, schemaVersion: 2 }) };
+/** Build a fake 1->2 migration that applies `fn` and bumps the version, as a real one must. */
+const fake = (fn, changes) => ({
+  from: 1,
+  to: 2,
+  changes,
+  migrate: (d) => ({ ...fn(d), schemaVersion: 2 }),
+});
+const mapWorkouts = (d, f) => ({ ...d, workouts: d.workouts.map(f) });
+const mapEntries = (d, f) =>
+  mapWorkouts(d, (w) => ({ ...w, exercises: w.exercises.map((e) => f(e)) }));
+
 const lossy = {
-  dropsAWorkout: { from: 1, to: 2, migrate: (d) => ({ ...d, workouts: d.workouts.slice(1) }) },
-  changesAWeight: {
-    from: 1,
-    to: 2,
-    migrate: (d) => ({
-      ...d,
-      workouts: d.workouts.map((w) => ({
-        ...w,
-        exercises: w.exercises.map((e) => ({ ...e, weight: (e.weight ?? 0) + 1 })),
-      })),
-    }),
-  },
-  dropsUnknownField: {
-    from: 1,
-    to: 2,
-    migrate: (d) => ({ ...d, workouts: d.workouts.map(({ rpe, ...rest }) => rest) }), // eslint-disable-line no-unused-vars
-  },
-  duplicatesId: {
-    from: 1,
-    to: 2,
-    migrate: (d) => ({ ...d, workouts: d.workouts.map((w) => ({ ...w, id: 1 })) }),
-  },
+  dropsAWorkout: fake((d) => ({ ...d, workouts: d.workouts.slice(1) })),
+  changesAWeight: fake((d) => mapEntries(d, (e) => ({ ...e, weight: (e.weight ?? 0) + 1 }))),
+  dropsAnUnknownWorkoutField: fake((d) => mapWorkouts(d, ({ rpe, ...rest }) => rest)), // eslint-disable-line no-unused-vars
+  changesAnUnknownWorkoutFieldValue: fake((d) =>
+    mapWorkouts(d, (w) => ('notes' in w ? { ...w, notes: w.notes + '!' } : { ...w, rpe: 1 })),
+  ),
+  duplicatesId: fake((d) => mapWorkouts(d, (w) => ({ ...w, id: 1 }))),
+  deletesOnePersonalRecordKey: fake((d) => {
+    const { [Object.keys(d.personalRecords)[0]]: _gone, ...rest } = d.personalRecords; // eslint-disable-line no-unused-vars
+    return { ...d, personalRecords: rest };
+  }),
+  zeroesPersonalRecordValues: fake((d) => ({
+    ...d,
+    personalRecords: Object.fromEntries(
+      Object.entries(d.personalRecords).map(([k, p]) => [k, { ...p, value: 0 }]),
+    ),
+  })),
+  changesAPersonalRecordUnit: fake((d) => ({
+    ...d,
+    personalRecords: Object.fromEntries(
+      Object.entries(d.personalRecords).map(([k, p]) => [k, { ...p, unit: 'lb' }]),
+    ),
+  })),
+  changesEntrySide: fake((d) =>
+    mapEntries(d, (e) => (e.side ? { ...e, side: e.side === 'Left' ? 'Right' : 'Left' } : e)),
+  ),
+  changesEntryName: fake((d) => mapEntries(d, (e) => ({ ...e, name: e.name + ' x' }))),
+  overwritesBodyMetricValues: fake((d) => ({
+    ...d,
+    bodyMetrics: d.bodyMetrics.map((r) => ({ ...r, weight: 0 })),
+  })),
+  changesProfile: fake((d) => ({ ...d, profile: { ...d.profile, weight: 1 } })),
+  changesAPlan: fake((d) => ({
+    ...d,
+    userPlans: d.userPlans.map((p) => ({ ...p, name: 'renamed' })),
+  })),
+  dropsFavourites: fake((d) => ({ ...d, favourites: [] })),
   notIdempotent: {
     from: 1,
     to: 1,
-    migrate: (d) => ({
-      ...d,
-      workouts: d.workouts.map((w) => ({ ...w, totalSets: w.totalSets ?? 0 })),
-      counter: (d.counter ?? 0) + 1,
-    }),
+    migrate: (d) => ({ ...d, counter: (d.counter ?? 0) + 1 }),
   },
+  doesNotBumpTheVersion: { from: 1, to: 2, migrate: (d) => d },
 };
 
 test('negative self-test: a benign additive migration passes', () => {
-  assert.deepEqual(checkInvariants([bump]), []);
+  const additive = fake((d) =>
+    mapEntries({ ...d, extra: true }, (e) => ({ ...e, exerciseId: 'x' })),
+  );
+  assert.deepEqual(checkInvariants([additive]), []);
 });
 
 for (const [name, m] of Object.entries(lossy)) {
@@ -257,26 +124,43 @@ for (const [name, m] of Object.entries(lossy)) {
   });
 }
 
-test('negative self-test: a migration that drops a field from the active workout is caught', () => {
+test('negative self-test: a field dropped from the active workout is caught', () => {
   const fx = loadAllFixtures().filter((f) => f.file === 'hb_active_workout.json');
-  const dropsElapsed = { from: 1, to: 2, migrate: ({ elapsed, ...rest }) => rest }; // eslint-disable-line no-unused-vars
+  const dropsElapsed = fake(({ elapsed, ...rest }) => rest); // eslint-disable-line no-unused-vars
   assert.ok(checkInvariants([], fx, [dropsElapsed]).length > 0);
+});
+
+test('declared changes relax only what they name', () => {
+  const renames = fake(
+    (d) => mapEntries(d, (e) => ({ ...e, name: e.name + ' x' })),
+    ['entry.name'],
+  );
+  assert.deepEqual(checkInvariants([renames]), [], 'declared entry.name rewrite passes');
+
+  // declaring entry.name does not excuse any other loss
+  const renamesAndDrops = fake(
+    (d) => ({ ...mapEntries(d, (e) => ({ ...e, name: e.name + ' x' })), workouts: [] }),
+    ['entry.name'],
+  );
+  assert.ok(checkInvariants([renamesAndDrops]).length > 0);
+
+  const rekeys = fake(
+    (d) => ({
+      ...d,
+      personalRecords: Object.fromEntries(
+        Object.entries(d.personalRecords).map(([k, p]) => [k.toLowerCase(), p]),
+      ),
+    }),
+    ['personalRecords'],
+  );
+  assert.deepEqual(checkInvariants([rekeys]), [], 'declared personalRecords rewrite passes');
 });
 
 // ---- not provable until a runner exists ------------------------------------------------------
 
-test(
-  'corrupt JSON blob fails safe and never overwrites the stored value',
-  { todo: 'needs the migration runner (T5/T6)' },
-  () => {
-    assert.fail('pending runner');
-  },
-);
-
-test(
-  'future-version blob fails safe and never overwrites the stored value',
-  { todo: 'needs the migration runner (T5/T6)' },
-  () => {
-    assert.fail('pending runner');
-  },
-);
+test('corrupt JSON blob fails safe and never overwrites the stored value', {
+  todo: 'needs the migration runner (T5/T6)',
+});
+test('future-version blob fails safe and never overwrites the stored value', {
+  todo: 'needs the migration runner (T5/T6)',
+});

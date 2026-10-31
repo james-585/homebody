@@ -136,8 +136,9 @@ test('personal records, body metrics, plans, profile, favourites', () => {
 });
 
 // Measured values. m1.md and the fixture README say 10 orphan names in history and 11 counting PR
-// keys (measured here: the same). The T1 plan also lists "12 PRs"; the fixture holds 74 PR keys
-// (70 kg, 4 sec), so 74 is pinned and the "12" is flagged to the human rather than edited.
+// keys (measured here: the same). The T1 plan and fixture README say "12 PRs"; the fixture holds
+// 74 PR keys (70 kg, 4 sec). The human confirmed 74 is right (2026-10-31, in chat); the "12" in
+// those documents is stale and is not edited here.
 const ORPHANS_IN_HISTORY = [
   'Bodyweight Lunge',
   'DB Curl',
