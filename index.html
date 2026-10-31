@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>document.documentElement.classList.add('hb-booting');setTimeout(function(){document.documentElement.classList.remove('hb-booting')},3000);</script>
+<style>html.hb-booting body{visibility:hidden}</style>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1093,32 +1095,19 @@ let state = {
   diffFilter: null,
 };
 
-const STORAGE_KEY = 'vaultfit_v1';
-// Legacy keys from earlier builds — migrate on first load, then remove
-const LEGACY_STORAGE_KEYS = ['homebody_v1', 'homebody_v0', 'vaultfit_v0'];
+// Storage lives in src/storage/ (window.HB.storage); these shims keep the call sites unchanged.
+// persistSave() stays synchronous: the payload is serialised at call time inside save(). Failure
+// is surfaced by the store, not by callers, so the returned promise is marked handled here.
 function persistSave() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ workouts:state.workouts, personalRecords:state.personalRecords, bodyMetrics:state.bodyMetrics, userPlans:state.userPlans, profile:state.profile, favourites:state.favourites })); } catch(e) {}
+  if (!window.HB) return Promise.reject(new Error('storage unavailable')); // boot failed: never write
+  const p = window.HB.storage.save({ workouts:state.workouts, personalRecords:state.personalRecords, bodyMetrics:state.bodyMetrics, userPlans:state.userPlans, profile:state.profile, favourites:state.favourites });
+  p.catch(() => {});
+  return p;
 }
 function persistLoad() {
   try {
-    let raw = localStorage.getItem(STORAGE_KEY);
-    // Migration shim: if no data under current key, check legacy keys
-    if (!raw) {
-      for (const legacyKey of LEGACY_STORAGE_KEYS) {
-        const legacyRaw = localStorage.getItem(legacyKey);
-        if (legacyRaw) {
-          // Migrate data to current key, remove legacy entry
-          try {
-            localStorage.setItem(STORAGE_KEY, legacyRaw);
-            localStorage.removeItem(legacyKey);
-            raw = legacyRaw;
-            break;
-          } catch(e) {}
-        }
-      }
-    }
-    if (!raw) return;
-    const s = JSON.parse(raw);
+    const s = window.HB && window.HB.storage.loaded();
+    if (!s) return;
     if (s.workouts) state.workouts = s.workouts;
     if (s.personalRecords) state.personalRecords = s.personalRecords;
     if (s.bodyMetrics) state.bodyMetrics = s.bodyMetrics;
@@ -7276,7 +7265,11 @@ if (screen.orientation && screen.orientation.lock) {
   window.screen.lockOrientation('portrait');
 }
 // ─── INIT ───
-window.addEventListener('DOMContentLoaded', () => {
+// hbStart runs once, called by src/boot.js after the saved data is loaded (or by hbBootFailed).
+let hbStarted = false;
+function hbStart() {
+  if (hbStarted) return;
+  hbStarted = true;
   try {
     mLoadTheme();
     persistLoad();
@@ -7285,8 +7278,15 @@ window.addEventListener('DOMContentLoaded', () => {
     wmRestoreIfActive();
   } catch(e) {
     console.error('Init error:', e);
+  } finally {
+    document.documentElement.classList.remove('hb-booting');
   }
-});
+}
+// The module failed to load or run: start on empty state. window.HB stays unset, so persistSave()
+// rejects and nothing is ever written over the stored data.
+function hbBootFailed() {
+  hbStart();
+}
 
 
 // ─── THEME ───
@@ -8035,4 +8035,6 @@ function hbWorkoutActive() {
 })();
 if(!state.profile?.name) setTimeout(()=>mToast('👋 Welcome to HomeBody! Tap Profile to set up your account.',''),1200);
 
-</script></body></html>
+</script>
+<script type="module" src="src/boot.js" onerror="hbBootFailed()"></script>
+</body></html>

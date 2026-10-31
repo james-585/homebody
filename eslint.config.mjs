@@ -30,6 +30,22 @@ export default [
     languageOptions: { ecmaVersion: 2024, sourceType: 'module', globals: nodeGlobals },
   },
   {
+    // Shipped ES modules (src/): browser globals only.
+    files: ['src/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2024,
+      sourceType: 'module',
+      globals: {
+        window: 'readonly',
+        document: 'readonly',
+        console: 'readonly',
+        localStorage: 'readonly',
+        setTimeout: 'readonly',
+        structuredClone: 'readonly',
+      },
+    },
+  },
+  {
     // Code passed to page.evaluate runs in the browser against the app's classic-script globals.
     files: ['tests/e2e/**/*.mjs'],
     languageOptions: {
@@ -47,6 +63,11 @@ export default [
         mRenderHome: 'readonly',
         mRenderLog: 'readonly',
         mExportData: 'readonly',
+        HB: 'readonly',
+        getComputedStyle: 'readonly',
+        requestAnimationFrame: 'readonly',
+        performance: 'readonly',
+        persistSave: 'readonly',
       },
     },
   },
