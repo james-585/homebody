@@ -1,0 +1,64 @@
+{
+  "name": "Workout",
+  "planName": "Synthetic Plan",
+  "dayName": "Day 1",
+  "exercises": [
+    {
+      "name": "DB Floor Press",
+      "trackType": "reps",
+      "unilateral": false,
+      "supersetGroup": null,
+      "sets": [
+        {
+          "reps": 10,
+          "time": 0,
+          "weight": 10,
+          "trackType": "reps",
+          "done": true
+        },
+        {
+          "reps": 10,
+          "time": 0,
+          "weight": 10,
+          "trackType": "reps",
+          "done": false
+        }
+      ]
+    },
+    {
+      "name": "DB Single-Arm Row",
+      "trackType": "reps",
+      "unilateral": true,
+      "supersetGroup": null,
+      "sets": [
+        {
+          "reps": 10,
+          "time": 0,
+          "weight": 10,
+          "trackType": "reps",
+          "done": false,
+          "doneL": true,
+          "doneR": true
+        },
+        {
+          "reps": 10,
+          "time": 0,
+          "weight": 10,
+          "trackType": "reps",
+          "done": false,
+          "doneL": true,
+          "doneR": false
+        }
+      ]
+    }
+  ],
+  "startTime": 1793448000000,
+  "elapsed": 754,
+  "rpe": null,
+  "planCtx": {
+    "planId": 1789000000000,
+    "dayIdx": 0,
+    "planName": "Synthetic Plan",
+    "dayName": "Day 1"
+  }
+}

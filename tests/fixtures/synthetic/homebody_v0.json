@@ -1,0 +1,120 @@
+{
+  "workouts": [
+    {
+      "id": 1790100000002,
+      "name": "Workout",
+      "date": "2026-09-03T07:00:00.000Z",
+      "exercises": [
+        {
+          "name": "DB Single-Arm Row (Left)",
+          "sets": 3,
+          "reps": 10,
+          "time": 0,
+          "weight": 10,
+          "trackType": "reps"
+        },
+        {
+          "name": "DB Single-Arm Row (Right)",
+          "sets": 3,
+          "reps": 10,
+          "time": 0,
+          "weight": 10,
+          "trackType": "reps"
+        },
+        {
+          "name": "DB Curl",
+          "sets": 3,
+          "reps": 12,
+          "time": 0,
+          "weight": 5,
+          "trackType": "reps"
+        }
+      ],
+      "totalVolume": 780,
+      "totalSets": 9,
+      "calories": 150,
+      "duration": 30,
+      "bodyWeight": 80,
+      "legacyFlag": true
+    },
+    {
+      "id": 1790000000001,
+      "name": "Workout",
+      "date": "2026-09-01T07:00:00.000Z",
+      "exercises": [
+        {
+          "name": "DB Floor Press",
+          "sets": 3,
+          "reps": 10,
+          "time": 0,
+          "weight": 10,
+          "trackType": "reps"
+        },
+        {
+          "name": "KB Goblet Squat",
+          "sets": 3,
+          "reps": 12,
+          "time": 0,
+          "weight": 16,
+          "trackType": "reps"
+        },
+        {
+          "name": "Plank",
+          "sets": 3,
+          "reps": 0,
+          "time": 45,
+          "weight": 0,
+          "trackType": "time"
+        }
+      ],
+      "totalVolume": 876,
+      "totalSets": 9,
+      "calories": 150,
+      "duration": 30,
+      "bodyWeight": 80
+    }
+  ],
+  "personalRecords": {
+    "DB Floor Press": {
+      "value": 10,
+      "unit": "kg"
+    },
+    "KB Goblet Squat": {
+      "value": 16,
+      "unit": "kg"
+    },
+    "Plank": {
+      "value": 45,
+      "unit": "sec"
+    }
+  },
+  "bodyMetrics": [
+    {
+      "date": "2026-09-03T07:00:00.000Z",
+      "weight": 80,
+      "waist": null,
+      "bodyfat": null
+    }
+  ],
+  "userPlans": [],
+  "profile": {
+    "name": "Synthetic User",
+    "age": 30,
+    "sex": "male",
+    "weight": 80,
+    "goal": "general",
+    "activity": "moderate",
+    "equipment": {
+      "dumbbells": [
+        5,
+        10
+      ],
+      "kettlebells": [
+        16
+      ]
+    }
+  },
+  "favourites": [
+    "DB Floor Press"
+  ]
+}
