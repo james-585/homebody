@@ -4,12 +4,18 @@ import { mkdtemp, mkdir, readFile, rm, stat, symlink, utimes, writeFile } from '
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { computeVersion, listShellFiles, run, renderBlock } from '../../scripts/stamp-sw.mjs';
+import {
+  computeVersion,
+  listPrecache,
+  listShellFiles,
+  run,
+  renderBlock,
+} from '../../scripts/stamp-sw.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const SW_BODY = "const CACHE = 'homebody-' + VERSION;\nself.addEventListener('fetch', () => {});\n";
-const swWith = (version, body = SW_BODY) => `// head\n${renderBlock(version)}\n${body}`;
+const swWith = (version, body = SW_BODY) => `// head\n${renderBlock(version, [])}\n${body}`;
 
 /** A throwaway tree: files is { path: contents }, created in the given order. */
 async function makeTree(files = {}, sw = swWith('x')) {
@@ -64,7 +70,7 @@ test('files are listed in byte order, not locale order', async () => {
 });
 
 test('golden hash pins the path/NUL/length/NUL/bytes framing', async () => {
-  const sw = `// head\n${renderBlock('anything')}\nconst x = 1;\n`;
+  const sw = `// head\n${renderBlock('anything', [])}\nconst x = 1;\n`;
   const files = {
     'index.html': 'a',
     'manifest.json': 'bb',
@@ -77,8 +83,9 @@ test('golden hash pins the path/NUL/length/NUL/bytes framing', async () => {
       await mkdir(dirname(join(root, p)), { recursive: true });
       await writeFile(join(root, p), c);
     }
-    // Computed independently (Python hashlib) from the documented framing.
-    assert.equal(await computeVersion(root), '36f2540a4595');
+    // Computed independently (Python hashlib) from the documented framing; since T3 the hash
+    // input also carries the rendered precache list as a 'stamp:precache' entry.
+    assert.equal(await computeVersion(root), '5a7c6c993aef');
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -264,7 +271,7 @@ test('--check passes after stamp and fails on a stale block without writing (AC1
 });
 
 test('--check fails on missing markers and duplicate markers, and never writes', async () => {
-  const duplicated = `${renderBlock('a')}\n${renderBlock('b')}\n`;
+  const duplicated = `${renderBlock('a', [])}\n${renderBlock('b', [])}\n`;
   for (const sw of [
     'const CACHE = 1;\n',
     duplicated,
@@ -285,4 +292,76 @@ test('--check fails on missing markers and duplicate markers, and never writes',
 test('the real repo is stamped: a forgotten `npm run stamp` fails npm test too', async () => {
   const res = await run(repoRoot, { check: true });
   assert.equal(res.code, 0, res.message);
+});
+
+test('PRECACHE is derived from the shell list: sorted, runtime types only, no licences or notes', async () => {
+  await withTree(
+    {
+      'src/b.js': '1',
+      'src/a.js': '2',
+      'fonts/z.woff2': '3',
+      'fonts/OFL-X.txt': '4',
+      'fonts/SOURCES.md': '5',
+      'src/data.json': '6',
+    },
+    undefined,
+    async (root) => {
+      assert.deepEqual(await listPrecache(root), [
+        'fonts/z.woff2',
+        'icon-192.png',
+        'index.html',
+        'manifest.json',
+        'src/a.js',
+        'src/b.js',
+        'src/data.json',
+      ]);
+      await run(root);
+      const sw = await readFile(join(root, 'sw.js'), 'utf8');
+      assert.match(sw, /const PRECACHE = \["fonts\/z.woff2", "icon-192.png", "index.html"/);
+      assert.ok(!sw.includes('OFL-X') && !sw.includes('SOURCES'));
+    },
+  );
+});
+
+test('adding a woff2 changes the cache list and the version; a licence only the version', async () => {
+  await withTree({}, undefined, async (root) => {
+    const v0 = await computeVersion(root);
+    const l0 = await listPrecache(root);
+    await mkdir(join(root, 'fonts'));
+    await writeFile(join(root, 'fonts/OFL.txt'), 'x');
+    const v1 = await computeVersion(root);
+    assert.notEqual(v1, v0);
+    assert.deepEqual(await listPrecache(root), l0);
+    await writeFile(join(root, 'fonts/f.woff2'), 'x');
+    assert.notEqual(await computeVersion(root), v1);
+    assert.ok((await listPrecache(root)).includes('fonts/f.woff2'));
+  });
+});
+
+test('the precache list itself is part of the hash (a changed filter changes VERSION)', async () => {
+  // Same files, same sw.js, different rendered list => different hash. Simulated by the
+  // pseudo-entry: a file that is hashed but not cached must not equal one that is cached.
+  const a = await makeTree({ 'src/x.txt': 'same' });
+  const b = await makeTree({ 'src/x.js': 'same' });
+  try {
+    assert.notEqual(await computeVersion(a), await computeVersion(b));
+    assert.deepEqual(await listPrecache(a), ['icon-192.png', 'index.html', 'manifest.json']);
+  } finally {
+    await rm(a, { recursive: true, force: true });
+    await rm(b, { recursive: true, force: true });
+  }
+});
+
+test('a hostile runtime filename fails the stamp instead of being skipped', async () => {
+  for (const name of ['fonts/a b.woff2', "fonts/a'b.woff2", 'src/\u00e9.js']) {
+    await withTree({ [name]: 'x' }, undefined, async (root) => {
+      const sw = await readFile(join(root, 'sw.js'), 'utf8');
+      for (const check of [true, false]) {
+        const res = await run(root, { check });
+        assert.equal(res.code, 1, name);
+        assert.match(res.message, /not a safe relative path/);
+        assert.equal(await readFile(join(root, 'sw.js'), 'utf8'), sw);
+      }
+    });
+  }
 });
