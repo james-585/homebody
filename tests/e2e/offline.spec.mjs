@@ -31,39 +31,31 @@ async function watch(context, page, siteURL) {
   return seen;
 }
 
-/** First visit: wait until the worker is active, controls the page and has filled its cache. */
+/** First visit: wait until the worker is installed (cache filled) and controls a settled page. */
 async function firstLoad(page, siteURL) {
   await page.goto(siteURL + 'index.html');
-  await page.evaluate(async () => {
-    const reg = await navigator.serviceWorker.ready;
-    if (reg.active.state !== 'activated') {
-      await new Promise((ok) =>
-        reg.active.addEventListener('statechange', () => reg.active.state === 'activated' && ok()),
-      );
-    }
-  });
   // The shipped page reloads once when the worker claims it (until T4). Wait for a document
   // that was served by the worker, which is controlled from its first byte.
   await page.waitForFunction(
     () =>
       document.readyState === 'complete' &&
-      !!navigator.serviceWorker.controller &&
-      performance.getEntriesByType('navigation')[0]?.workerStart > 0,
+      !!globalThis.navigator.serviceWorker.controller &&
+      globalThis.performance.getEntriesByType('navigation')[0]?.workerStart > 0,
   );
 }
 
 async function externalResources(page) {
   return page.evaluate(() =>
-    performance
+    globalThis.performance
       .getEntriesByType('resource')
       .map((e) => e.name)
-      .filter((n) => new URL(n).origin !== location.origin),
+      .filter((n) => new URL(n).origin !== globalThis.location.origin),
   );
 }
 
 async function visitEveryPage(page) {
   for (const p of ['plans', 'progress', 'profile', 'train']) {
-    await page.evaluate((id) => mShowPage(id), p);
+    await page.evaluate((id) => globalThis.mShowPage(id), p);
     await expect(page.locator(`#page-${p}`)).toBeVisible();
   }
 }
@@ -141,15 +133,16 @@ test('activation deletes stale homebody-* caches only, and the cache holds every
   // A page without a worker on the same origin, to seed caches before the first registration.
   await page.goto(siteURL + 'manifest.json');
   await page.evaluate(async () => {
-    await caches.open('homebody-0000stale0000');
-    await caches.open('other-app-v1');
+    await globalThis.caches.open('homebody-0000stale0000');
+    await globalThis.caches.open('other-app-v1');
   });
-  await page.goto(siteURL + 'index.html');
+  await firstLoad(page, siteURL);
   await expect
-    .poll(() => page.evaluate(async () => (await caches.keys()).sort()))
+    .poll(() => page.evaluate(async () => (await globalThis.caches.keys()).sort()))
     .toEqual([`homebody-${VERSION}`, 'other-app-v1'].sort());
   const cached = await page.evaluate(
-    async (name) => (await (await caches.open(name)).keys()).map((r) => new URL(r.url).pathname),
+    async (name) =>
+      (await (await globalThis.caches.open(name)).keys()).map((r) => new URL(r.url).pathname),
     `homebody-${VERSION}`,
   );
   expect(cached.map((p) => p.replace(/^\//, '')).sort()).toEqual([...PRECACHE].sort());
