@@ -20,6 +20,13 @@ test('@smoke the worker registers, activates and caches the precache list', asyn
   await page.waitForFunction(() => document.readyState === 'complete');
   const result = await page.evaluate(async () => {
     const reg = await globalThis.navigator.serviceWorker.ready;
+    // `ready` resolves while the worker is still 'activating'; wait for the activate handler.
+    const worker = reg.active;
+    if (worker.state !== 'activated') {
+      await new Promise((ok) =>
+        worker.addEventListener('statechange', () => worker.state === 'activated' && ok()),
+      );
+    }
     const names = await globalThis.caches.keys();
     const out = { active: reg.active?.state, names, cached: {} };
     for (const n of names) {
