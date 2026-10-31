@@ -46,10 +46,10 @@ test.use({ serviceWorkers: 'allow' });
 const HEX12 = /^[0-9a-f]{12}$/;
 
 /** Seed the origin, load v1, and wait until the worker controls the page and About knows its version. */
-async function launch(context, page, site, { workout = false } = {}) {
+async function launch(context, page, site, { workout = false, extra = {} } = {}) {
   const external = await blockExternal(context, site.url);
   await installProbes(page);
-  const entries = { vaultfit_v1: JSON.stringify(seedData()), hb_seen_guide: '1' };
+  const entries = { vaultfit_v1: JSON.stringify(seedData()), hb_seen_guide: '1', ...extra };
   if (workout) entries.hb_active_workout = JSON.stringify({ ...ACTIVE, name: 'Update Probe' });
   await seedOrigin(page, site.url, entries);
   await page.goto(site.url + 'index.html');
@@ -57,6 +57,10 @@ async function launch(context, page, site, { workout = false } = {}) {
     () => document.readyState === 'complete' && !!globalThis.navigator.serviceWorker.controller,
   );
   await expect(page.locator('#hb-about-version')).toHaveText(HEX12);
+  // Transient toasts (the app's welcome toast, "Ready to use offline") float above everything for
+  // about 3 s; hit tests start once they are gone.
+  await expect.poll(() => page.evaluate(() => globalThis.__toasts.join('|'))).toContain('Welcome');
+  await expect(page.locator('#m-toasts > *')).toHaveCount(0);
   return external;
 }
 
@@ -307,7 +311,7 @@ for (const [label, message] of [
     await expect.poll(async () => (await versions(page)).active).toBe(builds.v2.version);
     expect((await versions(page)).waiting).toBeNull();
     // Updated "elsewhere" as far as this page can tell: it asks for a reload, it does not reload.
-    await expect(banner(page)).toContainText('HomeBody was updated');
+    await expect(banner(page)).toContainText('HomeBody updated');
     expect(await page.evaluate(() => globalThis.__marker)).toBe('alive');
   });
 }
@@ -337,4 +341,282 @@ test('a waiting worker with the same VERSION as the running one raises no notice
   expect(await bannerLog(page)).toEqual([]);
   await showProfile(page);
   await expect(page.locator('#hb-about-update-row')).toBeHidden();
+});
+
+// ---- Amendment 2: real-touch hit tests, clearance, z-order, Updating state, focus, wording ----
+
+/** Where 85% across a button, at its vertical centre, lands. */
+const hit = (page, sel) =>
+  page.evaluate((q) => {
+    const b = globalThis.document.querySelector(q);
+    const r = b.getBoundingClientRect();
+    const x = r.left + r.width * 0.85;
+    const y = r.top + r.height / 2;
+    const el = globalThis.document.elementFromPoint(x, y);
+    return {
+      ok: !!el && (el === b || b.contains(el)),
+      x,
+      y,
+      hit: el ? el.id || el.tagName + ' ' + el.className : null,
+    };
+  }, sel);
+
+/** Assert the hit element is the button, then tap it with real touch input. */
+async function touch85(page, sel, { tap = true } = {}) {
+  const h = await hit(page, sel);
+  expect(h.ok, `${sel} is covered by ${h.hit}`).toBe(true);
+  if (tap) await page.touchscreen.tap(h.x, h.y);
+}
+
+const scrollProfileToEnd = (page) =>
+  page.evaluate(() => {
+    const el = globalThis.document.getElementById('page-profile');
+    el.scrollTop = el.scrollHeight;
+  });
+
+const UPDATE = '#hb-update .btn-primary';
+const LATER = '#hb-update .btn-secondary';
+
+for (const [w, h] of [
+  [375, 667],
+  [390, 844],
+  [430, 932],
+]) {
+  for (const theme of ['dark', 'light']) {
+    for (const motion of ['no-preference', 'reduce']) {
+      test.describe(`touch ${w}x${h} ${theme} motion:${motion}`, () => {
+        test.use({ viewport: { width: w, height: h }, hasTouch: true, reducedMotion: motion });
+
+        test('State 1: the card, About Copy and About Update take real taps; the Profile end clears the FAB', async ({
+          context,
+          page,
+          site,
+          builds,
+        }) => {
+          await launch(context, page, site, { extra: { hb_theme: theme } });
+          await page.evaluate(() => (globalThis.__marker = 'alive'));
+
+          // The empty part of the closed FAB tray lets taps through to what is underneath.
+          const tray = await page.evaluate(() => {
+            const t = globalThis.document.getElementById('m-fab-tray');
+            const r = t.getBoundingClientRect();
+            const el = globalThis.document.elementFromPoint(r.left + 4, r.top + 4);
+            return { height: r.height, through: !!el && !t.contains(el) };
+          });
+          expect(tray.height).toBeGreaterThan(100); // the invisible box is really there
+          expect(tray.through).toBe(true);
+
+          await deployAndSettle(page, site, builds.v2);
+          await expect(banner(page)).toBeVisible();
+          const look = await banner(page).evaluate((el) => {
+            const c = globalThis.getComputedStyle(el);
+            return { z: c.zIndex, border: c.borderTopWidth };
+          });
+          expect(look).toEqual({ z: '150', border: '2px' });
+          await touch85(page, UPDATE, { tap: false }); // Update is reachable (tapping would reload)
+          await touch85(page, LATER); // real tap
+          await expect(banner(page)).toBeHidden();
+
+          await showProfile(page);
+          await scrollProfileToEnd(page);
+          const row = page.locator('#hb-about-update-row');
+          await expect(row).toBeVisible();
+          // B2: at the end of the scroll the last About row is above the FAB.
+          const gap = await page.evaluate(() => {
+            const r = globalThis.document
+              .getElementById('hb-about-update-row')
+              .getBoundingClientRect();
+            const f = globalThis.document.getElementById('m-fab-main').getBoundingClientRect();
+            return f.top - r.bottom;
+          });
+          expect(gap).toBeGreaterThanOrEqual(0);
+          // Version value never breaks mid-hash; Copy is wide enough for "Copied".
+          const about = await page.evaluate(() => {
+            const v = globalThis.getComputedStyle(
+              globalThis.document.getElementById('hb-about-version'),
+            );
+            const c = globalThis.document.getElementById('hb-about-copy').getBoundingClientRect();
+            return { ws: v.whiteSpace, font: v.fontFamily, copyW: c.width };
+          });
+          expect(about.ws).toBe('nowrap');
+          expect(about.font).toMatch(/monospace|Menlo/);
+          expect(about.copyW).toBeGreaterThanOrEqual(84);
+
+          await touch85(page, '#hb-about-copy');
+          await expect(page.locator('#hb-about-copy')).toHaveText(/Copied|Copy failed/);
+          await touch85(page, '#hb-about-update-btn'); // real tap: applies the update
+          await expect
+            .poll(() =>
+              page.evaluate(() => globalThis.__marker ?? 'gone').catch(() => 'navigating'),
+            )
+            .toBe('gone');
+          await expect(page.locator('#hb-about-version')).toHaveText(builds.v2.version);
+        });
+      });
+    }
+  }
+}
+
+for (const [w, h] of [
+  [375, 667],
+  [390, 844],
+  [430, 932],
+]) {
+  test.describe(`touch ${w}x${h} reload state`, () => {
+    test.use({ viewport: { width: w, height: h }, hasTouch: true });
+
+    test('State 3: Reload on the card and in About take real taps; wording', async ({
+      context,
+      page,
+      site,
+      builds,
+    }) => {
+      await launch(context, page, site);
+      await page.evaluate(() => (globalThis.__marker = 'alive'));
+      await deployAndSettle(page, site, builds.v2);
+      await expect(banner(page)).toBeVisible();
+      await page.evaluate(async () => {
+        (await globalThis.navigator.serviceWorker.getRegistration()).waiting.postMessage({
+          type: 'SKIP_WAITING',
+        });
+      });
+      await expect(banner(page)).toContainText('HomeBody updated');
+      await expect(banner(page)).toContainText('Reload to use the new version.');
+      await expect(banner(page).locator('.btn-primary')).toHaveText('Reload');
+      await touch85(page, UPDATE, { tap: false });
+      await touch85(page, LATER);
+      await expect(banner(page)).toBeHidden();
+      await showProfile(page);
+      await scrollProfileToEnd(page);
+      await expect(page.locator('#hb-about-update-label')).toHaveText('Updated, reload to use it');
+      await expect(page.locator('#hb-about-update-btn')).toHaveText('Reload');
+      await touch85(page, '#hb-about-update-btn'); // real tap: reloads
+      await expect
+        .poll(() => page.evaluate(() => globalThis.__marker ?? 'gone').catch(() => 'navigating'))
+        .toBe('gone');
+      await expect(page.locator('#hb-about-version')).toHaveText(builds.v2.version);
+    });
+  });
+}
+
+test.describe('FAB and sheets (390x844, touch)', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+
+  test('the FAB still opens its tray and Rest / 30s / Wake still work by touch', async ({
+    context,
+    page,
+    site,
+  }) => {
+    await launch(context, page, site);
+    await page.evaluate(() => {
+      globalThis.__fab = { qt: 0, wake: 0 };
+      globalThis.mQuickTap = () => globalThis.__fab.qt++;
+      globalThis.mToggleWakeLock = () => globalThis.__fab.wake++;
+    });
+    const tapCentre = async (sel) => {
+      const b = await page.locator(sel).boundingBox();
+      await page.touchscreen.tap(b.x + b.width / 2, b.y + b.height / 2);
+    };
+    await tapCentre('#m-fab-main');
+    await expect(page.locator('#m-fab-rest')).toHaveCSS('opacity', '1');
+    await expect(page.locator('#m-fab-rest')).toHaveCSS('pointer-events', 'auto');
+    await tapCentre('#m-qt-btn');
+    await tapCentre('#m-wake-btn');
+    expect(await page.evaluate(() => globalThis.__fab)).toEqual({ qt: 1, wake: 1 });
+    await tapCentre('#m-fab-rest');
+    await expect(page.locator('#m-timer-modal')).toHaveClass(/open/);
+    // closed again: the hidden children take no taps
+    await page.evaluate(() => globalThis.mCloseModal('m-timer-modal'));
+    await expect(page.locator('#m-fab-rest')).toHaveCSS('pointer-events', 'none');
+  });
+
+  test('a sheet (z-index 200) covers the update card', async ({ context, page, site, builds }) => {
+    await launch(context, page, site);
+    await deployAndSettle(page, site, builds.v2);
+    await expect(banner(page)).toBeVisible();
+    await touch85(page, UPDATE, { tap: false });
+    await page.evaluate(() => globalThis.mOpenModal('m-timer-modal'));
+    const covered = await page.evaluate(() => {
+      const r = globalThis.document
+        .querySelector('#hb-update .btn-primary')
+        .getBoundingClientRect();
+      const el = globalThis.document.elementFromPoint(
+        r.left + r.width * 0.85,
+        r.top + r.height / 2,
+      );
+      return !globalThis.document.getElementById('hb-update').contains(el);
+    });
+    expect(covered).toBe(true);
+  });
+
+  test('Updating: the primary stays at full opacity with taps blocked, Later is dimmed, status says so, then it restores', async ({
+    context,
+    page,
+    site,
+    builds,
+  }) => {
+    await launch(context, page, site);
+    await deployAndSettle(page, site, builds.v2);
+    await expect(banner(page)).toBeVisible();
+    // Keep the worker waiting so the busy state can be observed: drop SKIP_WAITING.
+    await page.evaluate(() => {
+      globalThis.__posts = 0;
+      const o = globalThis.ServiceWorker.prototype.postMessage;
+      globalThis.ServiceWorker.prototype.postMessage = function (m, t) {
+        if (m && m.type === 'SKIP_WAITING') {
+          globalThis.__posts++;
+          return;
+        }
+        return o.call(this, m, t);
+      };
+    });
+    await touch85(page, UPDATE);
+    const go = banner(page).locator('.btn-primary');
+    await expect(go).toHaveText('Updating…');
+    await expect(go).toHaveAttribute('aria-disabled', 'true');
+    await expect(go).toHaveCSS('opacity', '1');
+    await expect(go).toHaveCSS('pointer-events', 'none');
+    await expect(go).toHaveJSProperty('disabled', false); // aria-disabled, not the attribute
+    await expect(banner(page).locator('.btn-secondary')).toBeDisabled();
+    await expect(banner(page).locator('[role=status]')).toHaveText('Updating…');
+    await go.focus();
+    await page.keyboard.press('Enter'); // aria-disabled must not re-fire
+    expect(await page.evaluate(() => globalThis.__posts)).toBe(1);
+    await expect(go).toHaveText('Update', { timeout: 15000 }); // quietly restored after 10 s
+    await expect(go).not.toHaveAttribute('aria-disabled', 'true');
+    await expect(banner(page).locator('[role=status]')).toContainText('Update ready');
+  });
+
+  test('after Later or Escape focus returns to where it was, else the page heading', async ({
+    context,
+    page,
+    site,
+    builds,
+  }) => {
+    await launch(context, page, site);
+    await page.evaluate(() => globalThis.mShowPage('progress'));
+    await deployAndSettle(page, site, builds.v2);
+    await expect(banner(page)).toBeVisible();
+    // No earlier focus: the Progress heading.
+    await page.locator(LATER).focus();
+    await page.keyboard.press('Escape');
+    await expect(banner(page)).toBeHidden();
+    expect(await page.evaluate(() => globalThis.document.activeElement.tagName)).toBe('H1');
+  });
+
+  test('after Later, focus returns to the element that had it', async ({
+    context,
+    page,
+    site,
+    builds,
+  }) => {
+    await launch(context, page, site);
+    await deployAndSettle(page, site, builds.v2);
+    await expect(banner(page)).toBeVisible();
+    await page.locator('#tab-progress').focus();
+    await page.locator(LATER).focus();
+    await page.locator(LATER).press('Enter');
+    await expect(banner(page)).toBeHidden();
+    expect(await page.evaluate(() => globalThis.document.activeElement.id)).toBe('tab-progress');
+  });
 });
