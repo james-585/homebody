@@ -1,6 +1,6 @@
 # Save-problem bar (write-failure banner)
 
-Status: Draft for James's approval (T5 step 0, docs/plans/m1/T5.md). Author: product-designer, 2026-10-31.
+Status: Approved. Approved by james585 on 2026-10-31, in chat. Answers: Q1 hold T4 update card and About Update/Reload while a save failure shows (one-condition widening of T5); Q2 accept misleading "saved" toasts, log K26 for T8; Q3 Retry only mid-workout, Export after Finish or Cancel; Q4 Export is the main button; Q5 no "free up space" advice; Q6 load-time bars stay all session. Author: product-designer, 2026-10-31.
 Scope: only the UI that T5b needs: one bar, its states, its copy, its layering, and the CSS that moves other layers out of its way. No change to `mToast`, call sites, T4 update code or any `wm*` function (except the approved Q3 `wmPersist` catch line).
 Principles: 1 (never lose data: the bar is the only truthful signal that something is not saved), 5 (works mid-workout), 7 (never slows logging), 2 (plain, calm, honest copy).
 
