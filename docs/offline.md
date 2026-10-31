@@ -27,3 +27,8 @@ Task: M1 T3. The update flow (no `skipWaiting`, banners, safe-moment updates) is
 
 ## Adding a shipped file
 Put it under `src/` or `fonts/`, run `npm run stamp`, commit `sw.js`. A runtime file type (`.html .json .png .js .woff2`) is precached automatically; an unsafe file name makes the stamp fail.
+
+## Install atomicity and response checks
+- Install fetches every `PRECACHE` entry first (`cache: 'reload'`), rejects any answer that is not ok or was redirected (a captive portal or a Pages redirect must never be cached as `index.html`), and only then opens `homebody-<VERSION>` and stores the entries. A failure deletes the half-written cache, so no new cache is left and the previous worker stays in charge. `offline.spec.mjs` ("a failed precache fetch...") serves a release with a missing font as 404 and checks exactly that.
+- `ignoreSearch` on non-navigation assets is safe because shell assets are content-hashed with the release; a `?v=` never selects a different file.
+- Constraint: the redirect check relies on `fetch` following redirects by default (`res.redirected`); it does not detect a same-URL 200 that is an error page, which only a content hash could. Not addressed here.

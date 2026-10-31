@@ -3,6 +3,9 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { startServer } from '../../scripts/serve.mjs';
 import { test, expect, seedData, seedStorage } from './helpers/seed.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -16,7 +19,14 @@ test.use({ serviceWorkers: 'allow' });
 async function watch(context, page, siteURL) {
   const seen = { external: [], failed: [], requests: [] };
   const origin = new URL(siteURL).origin;
-  const isOurs = (u) => u.startsWith(origin) || u.startsWith('data:') || u.startsWith('blob:');
+  const isOurs = (u) => {
+    if (u.startsWith('data:') || u.startsWith('blob:')) return true;
+    try {
+      return new URL(u).origin === origin;
+    } catch {
+      return false;
+    }
+  };
   await context.route('**/*', (route) => {
     const u = route.request().url();
     if (isOurs(u)) return route.continue();
@@ -95,7 +105,7 @@ test('@smoke offline: opens, fonts load, a workout is logged and survives an off
   await inputs.nth(1).fill('10');
   await inputs.nth(2).fill('20');
   await page.click('text=Save Workout');
-  await expect(page.locator('#m-log-list, #m-home-log-section').first()).toBeAttached();
+  await expect(page.locator('text=/"Offline Probe" saved/').first()).toBeVisible();
 
   await page.reload();
   await page.click('#m-home-tab-history');
@@ -146,4 +156,53 @@ test('activation deletes stale homebody-* caches only, and the cache holds every
     `homebody-${VERSION}`,
   );
   expect(cached.map((p) => p.replace(/^\//, '')).sort()).toEqual([...PRECACHE].sort());
+});
+
+test('a failed precache fetch leaves no new cache and the old worker in charge', async ({
+  page,
+}) => {
+  // A throwaway copy of the shell, served from its own server, so a file can be removed.
+  const dir = await mkdtemp(join(tmpdir(), 'hb-atomic-'));
+  for (const f of ['sw.js', ...PRECACHE]) {
+    await cp(join(root, f), join(dir, f), { recursive: true });
+  }
+  const server = await startServer(dir, 0);
+  try {
+    await seedStorage(page, { hb_seen_guide: '1' });
+    await firstLoad(page, server.url);
+    const before = await page.evaluate(async () => ({
+      keys: await globalThis.caches.keys(),
+      script: (await globalThis.navigator.serviceWorker.ready).active.scriptURL,
+    }));
+    expect(before.keys).toEqual([`homebody-${VERSION}`]);
+
+    // "Release 2": a different VERSION whose precache list names a file that now answers 404.
+    const sw2 = (await readFile(join(dir, 'sw.js'), 'utf8')).replace(VERSION, 'deadbeef0000');
+    await writeFile(join(dir, 'sw.js'), sw2);
+    await rm(join(dir, 'fonts/oswald-latin.woff2'));
+
+    const after = await page.evaluate(async () => {
+      const reg = await globalThis.navigator.serviceWorker.ready;
+      await reg.update();
+      const w = reg.installing || reg.waiting;
+      if (w && w.state !== 'redundant') {
+        await new Promise((ok) =>
+          w.addEventListener('statechange', () => w.state === 'redundant' && ok()),
+        );
+      }
+      return {
+        keys: (await globalThis.caches.keys()).sort(),
+        active: reg.active.scriptURL,
+        waiting: !!reg.waiting,
+        sawWorker: !!w,
+      };
+    });
+    expect(after.sawWorker).toBe(true);
+    expect(after.keys).toEqual([`homebody-${VERSION}`]);
+    expect(after.active).toBe(before.script);
+    expect(after.waiting).toBe(false);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
 });
