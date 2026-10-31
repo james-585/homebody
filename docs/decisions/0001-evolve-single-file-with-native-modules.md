@@ -1,6 +1,6 @@
 # 0001 — Evolve the single file by extracting native ES modules, no bundler
 
-Status: Proposed · Date: 2026-10-31 · Author: architect · Milestone: M1
+Status: Accepted (by James, in chat, 2026-10-31) · Date: 2026-10-31 · Author: architect · Milestone: M1
 
 ## Context
 `index.html` is ~670 KB / 7,802 lines: CSS, an exercise library, plans, instructions and ~all logic in one classic `<script>` with global functions called from inline `onclick` handlers (K14). There are no tests and no toolchain. M1 must add a real service worker, a storage layer with versioned migrations and stable exercise IDs, and every step must ship. Migrations and training logic must be pure and testable without a browser (CLAUDE.md principles 1, 6). Hosting is static (GitHub Pages).

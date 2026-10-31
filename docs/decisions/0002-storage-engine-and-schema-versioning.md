@@ -1,6 +1,6 @@
 # 0002 — Storage: IndexedDB with versioned migrations, snapshots and a localStorage mirror
 
-Status: Proposed · Date: 2026-10-31 · Author: architect · Milestone: M1
+Status: Accepted (by James, in chat, 2026-10-31) · Date: 2026-10-31 · Author: architect · Milestone: M1
 
 ## Context
 All user history lives in one localStorage JSON blob, `vaultfit_v1` (K2). `persistSave()` swallows every error, so a quota or private-mode failure loses data silently. `persistLoad()` copies legacy keys (`homebody_v1`, `homebody_v0`, `vaultfit_v0`) into `vaultfit_v1` and deletes them, with no version tag and no backup. Import (`mConfirmImport`) overwrites state with no snapshot and no undo. Other keys: `hb_active_workout` (live workout, written every 10 s), `hb_milestones`, `hb_theme`, `hb_seen_tutorial`, `hb_seen_guide`.

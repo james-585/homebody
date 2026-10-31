@@ -1,6 +1,6 @@
 # 0004 — Stable exercise IDs, alias map, and per-side entries with a `side` field
 
-Status: Proposed · Date: 2026-10-31 · Author: architect · Milestone: M1
+Status: Accepted (by James, in chat, 2026-10-31) · Date: 2026-10-31 · Author: architect · Milestone: M1
 
 ## Context
 Exercises are matched by display name (~20 `EXERCISES.find(x => x.name === …)` sites; PRs are keyed by name; plan days, favourites and the live workout hold names) (K3). The library (`const EXERCISES`) has 236 entries with no IDs. Unilateral work is logged as two entries, `"<name> (Left)"` and `"<name> (Right)"`; whether an exercise is unilateral is decided by a set plus keyword matching (`mIsUnilateral`).

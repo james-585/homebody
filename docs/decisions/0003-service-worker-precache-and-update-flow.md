@@ -1,6 +1,6 @@
 # 0003 — Service worker: generated precache, cache-first shell, user-timed updates
 
-Status: Proposed · Date: 2026-10-31 · Author: architect · Milestone: M1
+Status: Accepted (by James, in chat, 2026-10-31) · Date: 2026-10-31 · Author: architect · Milestone: M1
 
 ## Context
 `sw.js` precaches only `manifest.json`; HTML is fetched `no-store` with a fallback to an empty cache, so the app does not open offline (K1). Fonts come from Google Fonts. `install` calls `skipWaiting()`, so a new worker takes over immediately. index.html contains two overlapping update-banner implementations, polls `reg.update()` every 60 s, reloads on every `controllerchange`, and registers `sw.js?v=7` while the cache is `homebody-v11` and the comment says v8 (K4). Nothing stops an update reload during a live workout (principle 5).
