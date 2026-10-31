@@ -2,7 +2,7 @@
 //   node scripts/serve.mjs [dir] [port]     (port 0 or omitted = random free port)
 // Serves only files under the given directory; relative URLs work from any sub-path.
 import http from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,21 +20,33 @@ const TYPES = {
 
 export function startServer(root, port = 0) {
   const base = resolve(root);
+  let realBase;
+  let listenPort = port;
+  const forbidden = (res) => res.writeHead(403).end('Forbidden');
   const server = http.createServer(async (req, res) => {
     try {
+      // Only answer requests addressed to this server (blocks DNS-rebinding style Host values).
+      const host = req.headers.host ?? '';
+      if (host !== `127.0.0.1:${listenPort}` && host !== `localhost:${listenPort}`) {
+        return forbidden(res);
+      }
       const url = new URL(req.url ?? '/', 'http://localhost');
-      let rel = normalize(decodeURIComponent(url.pathname));
+      const decoded = decodeURIComponent(url.pathname);
+      // No dotfiles or dot-directories (.git, .env, .claude, ...), and no traversal segments.
+      if (decoded.split('/').some((seg) => seg.startsWith('.'))) return forbidden(res);
+      let rel = normalize(decoded);
       if (rel.endsWith(sep) || rel === '/') rel = join(rel, 'index.html');
       const file = join(base, rel);
-      if (file !== base && !file.startsWith(base + sep)) {
-        res.writeHead(403).end('Forbidden');
-        return;
-      }
-      const info = await stat(file);
+      if (file !== base && !file.startsWith(base + sep)) return forbidden(res);
+      // Resolve symlinks and re-check, so a link inside the root cannot point outside it.
+      realBase ??= await realpath(base);
+      const real = await realpath(file);
+      if (real !== realBase && !real.startsWith(realBase + sep)) return forbidden(res);
+      const info = await stat(real);
       if (!info.isFile()) throw new Error('not a file');
-      const body = await readFile(file);
+      const body = await readFile(real);
       res.writeHead(200, {
-        'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
+        'Content-Type': TYPES[extname(real)] ?? 'application/octet-stream',
         'Cache-Control': 'no-cache',
       });
       res.end(body);
@@ -46,6 +58,7 @@ export function startServer(root, port = 0) {
     server.once('error', fail);
     server.listen(port, '127.0.0.1', () => {
       const { port: actual } = server.address();
+      listenPort = actual;
       ok({
         url: `http://127.0.0.1:${actual}/`,
         port: actual,
