@@ -1,0 +1,80 @@
+{
+  "DB Floor Press": {
+    "reps": 17,
+    "sets": 4,
+    "time": 0,
+    "trackType": "reps",
+    "weight": 10
+  },
+  "DB Overhead Press": {
+    "reps": 16,
+    "sets": 3,
+    "time": 0,
+    "trackType": "reps",
+    "weight": 10
+  },
+  "DB Single-Arm Row": {
+    "reps": 17,
+    "sets": 4,
+    "time": 0,
+    "trackType": "reps",
+    "weight": 10
+  },
+  "DB Single-Arm Row (Left)": {
+    "reps": 17,
+    "sets": 4,
+    "time": 0,
+    "trackType": "reps",
+    "weight": 10
+  },
+  "Dead Bug": {
+    "reps": 15,
+    "sets": 2,
+    "time": 0,
+    "trackType": "reps",
+    "weight": 0
+  },
+  "Farmer's Walk": {
+    "reps": 0,
+    "sets": 3,
+    "time": 60,
+    "trackType": "time",
+    "weight": 20
+  },
+  "KB Calf Raise": {
+    "reps": 25,
+    "sets": 2,
+    "time": 0,
+    "trackType": "reps",
+    "weight": 16
+  },
+  "KB Goblet Squat": {
+    "reps": 17,
+    "sets": 4,
+    "time": 0,
+    "trackType": "reps",
+    "weight": 16
+  },
+  "KB Lunge (Right)": {
+    "reps": 13,
+    "sets": 3,
+    "time": 0,
+    "trackType": "reps",
+    "weight": 16
+  },
+  "Not A Real Exercise": null,
+  "Plank": {
+    "reps": 0,
+    "sets": 2,
+    "time": 60,
+    "trackType": "time",
+    "weight": 0
+  },
+  "dead bug": {
+    "reps": 15,
+    "sets": 2,
+    "time": 0,
+    "trackType": "reps",
+    "weight": 0
+  }
+}

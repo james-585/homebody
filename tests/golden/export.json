@@ -1,0 +1,22 @@
+{
+  "filename": "Test_User_HomeBody_2026-11-01.vaultfit",
+  "header": {
+    "_exported": "2026-11-01T12:00:00.000Z",
+    "_name": "Test User",
+    "_vaultfit": true,
+    "_version": 1
+  },
+  "keyOrder": [
+    "_vaultfit",
+    "_version",
+    "_exported",
+    "_name",
+    "workouts",
+    "personalRecords",
+    "bodyMetrics",
+    "userPlans",
+    "profile",
+    "favourites"
+  ],
+  "payloadSha256": "ebd3e47c6237a13d99b4c61f9b735eb55a2557aa4fa4b62070a245d3235b1122"
+}
