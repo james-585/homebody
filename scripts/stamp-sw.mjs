@@ -1,12 +1,12 @@
 // Stamps the service worker with a content hash of the app shell (ADR 0003).
 //   node scripts/stamp-sw.mjs [--check] [rootDir]
-// Hashes every shell file (index.html, manifest.json, icon-*.png, src/**/*.js, fonts/*.woff2) and
+// Hashes every shell file (index.html, manifest.json, icon-*.png, every file under src/ and fonts/) and
 // sw.js itself with the generated block removed, then rewrites the marked block in sw.js.
 // --check writes nothing and exits 1 if the block is stale or the markers are wrong.
 import { createHash } from 'node:crypto';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const BEGIN = '// >>> stamp-sw:begin';
 const END = '// <<< stamp-sw:end';
@@ -17,14 +17,42 @@ export const PRECACHE = ['manifest.json'];
 
 const byteCompare = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b));
 
-/** Shell files, as POSIX paths relative to root, sorted in byte order. sw.js is handled apart. */
+/**
+ * Top-level files that are known not to be shipped. Explicit and small on purpose: any other
+ * top-level file that looks like an asset makes the stamper fail instead of being ignored,
+ * because an ignored shipped file would leave the cache name unchanged. Dotfiles are skipped.
+ */
+export const NOT_SHIPPED = new Set([
+  'CLAUDE.md',
+  'eslint.config.mjs',
+  'package-lock.json',
+  'package.json',
+  'playwright.config.mjs',
+]);
+const SHIPPED_TOP_LEVEL = (name) =>
+  name === 'index.html' || name === 'manifest.json' || /^icon-.+\.png$/.test(name);
+const ASSET_LIKE =
+  /\.(html?|json|webmanifest|svg|webp|ico|css|png|jpe?g|gif|avif|m?js|cjs|woff2?)$/i;
+
+/**
+ * Shell files, as POSIX paths relative to root, sorted in byte order. sw.js is handled apart.
+ * Every regular file under src/ and fonts/ counts, whatever its extension; symlinks are skipped.
+ * Throws if the top level holds an asset-looking file that is neither shipped nor known-unshipped.
+ */
 export async function listShellFiles(root) {
   const out = [];
-  const top = await readdir(root, { withFileTypes: true });
-  for (const e of top) {
-    if (!e.isFile()) continue;
-    if (e.name === 'index.html' || e.name === 'manifest.json') out.push(e.name);
-    else if (/^icon-.+\.png$/.test(e.name)) out.push(e.name);
+  const unknown = [];
+  for (const e of await readdir(root, { withFileTypes: true })) {
+    if (!e.isFile() || e.name === 'sw.js' || e.name.startsWith('.')) continue;
+    if (SHIPPED_TOP_LEVEL(e.name)) out.push(e.name);
+    else if (ASSET_LIKE.test(e.name) && !NOT_SHIPPED.has(e.name)) unknown.push(e.name);
+  }
+  if (unknown.length > 0) {
+    throw new Error(
+      `unrecognised top-level file(s): ${unknown.sort(byteCompare).join(', ')}. ` +
+        'They look like shipped assets but are not hashed. Move them under src/ or fonts/, ' +
+        'or extend SHIPPED_TOP_LEVEL / NOT_SHIPPED in scripts/stamp-sw.mjs.',
+    );
   }
   async function walk(rel) {
     let entries;
@@ -36,17 +64,11 @@ export async function listShellFiles(root) {
     for (const e of entries) {
       const p = `${rel}/${e.name}`;
       if (e.isDirectory()) await walk(p);
-      else if (e.isFile() && e.name.endsWith('.js')) out.push(p);
+      else if (e.isFile()) out.push(p);
     }
   }
   await walk('src');
-  try {
-    for (const e of await readdir(join(root, 'fonts'), { withFileTypes: true })) {
-      if (e.isFile() && e.name.endsWith('.woff2')) out.push(`fonts/${e.name}`);
-    }
-  } catch {
-    // no fonts directory yet
-  }
+  await walk('fonts');
   return out.sort(byteCompare);
 }
 
@@ -66,29 +88,44 @@ function locateBlock(text) {
   const from = text.lastIndexOf('\n', start) + 1;
   let to = text.indexOf('\n', endAt);
   if (to === -1) to = text.length;
-  return { from, to };
+  const crlf = to > 0 && text[to - 1] === '\r';
+  if (crlf) to--;
+  return { from, to, eol: crlf ? '\r\n' : '\n' };
 }
 
 /** sw.js text with the generated block (and its trailing newline) removed. */
 export function stripBlock(text) {
-  const { from, to } = locateBlock(text);
-  return text.slice(0, from) + text.slice(Math.min(to + 1, text.length));
+  const { from, to, eol } = locateBlock(text);
+  return text.slice(0, from) + text.slice(to + eol.length);
 }
 
-export function renderBlock(version, precache = PRECACHE) {
-  const list = precache.map((u) => `'${u}'`).join(', ');
+const SAFE_PATH = /^[A-Za-z0-9._/-]+$/;
+
+/** Throws unless the entry is a plain same-origin relative path (no scheme, no '..', no leading '/'). */
+function assertSafePrecachePath(u) {
+  if (typeof u !== 'string' || !SAFE_PATH.test(u) || u.startsWith('/') || u.includes('..')) {
+    throw new Error(`PRECACHE entry is not a safe relative path: ${JSON.stringify(u)}`);
+  }
+}
+
+export function renderBlock(version, precache = PRECACHE, eol = '\n') {
+  if (!/^[0-9A-Za-z]{1,64}$/.test(version)) {
+    throw new Error(`invalid version: ${JSON.stringify(version)}`);
+  }
+  precache.forEach(assertSafePrecachePath);
+  const list = precache.map((u) => JSON.stringify(u)).join(', ');
   return [
     `${BEGIN}${BEGIN_NOTE}`,
     `const VERSION = '${version}';`,
     `const PRECACHE = [${list}];`,
     END,
-  ].join('\n');
+  ].join(eol);
 }
 
 /** Replace the block in sw.js text. Returns the new text. */
 export function applyBlock(text, version) {
-  const { from, to } = locateBlock(text);
-  return text.slice(0, from) + renderBlock(version) + text.slice(to);
+  const { from, to, eol } = locateBlock(text);
+  return text.slice(0, from) + renderBlock(version, PRECACHE, eol) + text.slice(to);
 }
 
 /** First 12 hex chars of SHA-256 over the shell files and the block-less sw.js. */
@@ -133,7 +170,7 @@ export async function run(root, { check = false } = {}) {
   return { code: 0, wrote: true, message: 'stamp-sw: sw.js updated' };
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   const args = process.argv.slice(2);
   const check = args.includes('--check');
   const dir = args.find((a) => !a.startsWith('--'));

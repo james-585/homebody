@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { computeVersion, run, renderBlock } from '../../scripts/stamp-sw.mjs';
+import { computeVersion, listShellFiles, run, renderBlock } from '../../scripts/stamp-sw.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -44,14 +44,136 @@ test('hash is stable across two runs', async () => {
   });
 });
 
-test('hash does not depend on file creation order', async () => {
-  const a = await makeTree({ 'src/a.js': 'a', 'src/b.js': 'b', 'fonts/f.woff2': 'f' });
-  const b = await makeTree({ 'fonts/f.woff2': 'f', 'src/b.js': 'b', 'src/a.js': 'a' });
+test('files are listed in byte order, not locale order', async () => {
+  // Locale order would put a.js before B.js and 'é' next to 'e'; byte order is B, a, e, é.
+  await withTree(
+    { 'src/a.js': '1', 'src/B.js': '2', 'src/\u00e9.js': '3', 'src/e.js': '4' },
+    undefined,
+    async (root) => {
+      assert.deepEqual(await listShellFiles(root), [
+        'icon-192.png',
+        'index.html',
+        'manifest.json',
+        'src/B.js',
+        'src/a.js',
+        'src/e.js',
+        'src/\u00e9.js',
+      ]);
+    },
+  );
+});
+
+test('golden hash pins the path/NUL/length/NUL/bytes framing', async () => {
+  const sw = `// head\n${renderBlock('anything')}\nconst x = 1;\n`;
+  const files = {
+    'index.html': 'a',
+    'manifest.json': 'bb',
+    'src/m.js': 'ccc',
+    'fonts/f.woff2': 'dddd',
+  };
+  const root = await mkdtemp(join(tmpdir(), 'stamp-sw-'));
   try {
-    assert.equal(await computeVersion(a), await computeVersion(b));
+    for (const [p, c] of Object.entries({ ...files, 'sw.js': sw })) {
+      await mkdir(dirname(join(root, p)), { recursive: true });
+      await writeFile(join(root, p), c);
+    }
+    // Computed independently (Python hashlib) from the documented framing.
+    assert.equal(await computeVersion(root), '36f2540a4595');
   } finally {
-    await rm(a, { recursive: true, force: true });
-    await rm(b, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('every regular file under src/ and fonts/ is hashed, whatever its extension', async () => {
+  for (const added of ['src/data.json', 'src/deep/er/x.css', 'fonts/OFL.txt', 'src/noext']) {
+    await withTree({}, undefined, async (root) => {
+      const before = await computeVersion(root);
+      await mkdir(dirname(join(root, added)), { recursive: true });
+      await writeFile(join(root, added), 'x');
+      assert.ok((await listShellFiles(root)).includes(added), added);
+      assert.notEqual(await computeVersion(root), before, added);
+    });
+  }
+});
+
+test('symlinks under src/ are skipped', async (t) => {
+  await withTree({ 'src/a.js': 'a' }, undefined, async (root) => {
+    try {
+      await symlink(join(root, 'src/a.js'), join(root, 'src/link.js'));
+    } catch {
+      return t.skip('symlinks not available');
+    }
+    assert.ok(!(await listShellFiles(root)).includes('src/link.js'));
+  });
+});
+
+test('an unrecognised top-level asset fails loudly (exit 1) and never writes', async () => {
+  for (const name of [
+    'logo.svg',
+    'pic.webp',
+    'favicon.ico',
+    'style.css',
+    'other.html',
+    'data.json',
+    'app.js',
+  ]) {
+    await withTree({ [name]: 'x' }, undefined, async (root) => {
+      const sw = await readFile(join(root, 'sw.js'), 'utf8');
+      for (const check of [true, false]) {
+        const res = await run(root, { check });
+        assert.equal(res.code, 1, name);
+        assert.match(res.message, /unrecognised top-level/);
+        assert.ok(res.message.includes(name));
+        assert.equal(await readFile(join(root, 'sw.js'), 'utf8'), sw);
+      }
+    });
+  }
+});
+
+test('known non-shipped top-level files and dotfiles are ignored', async () => {
+  const known = {
+    'package.json': '{}',
+    'package-lock.json': '{}',
+    'eslint.config.mjs': '',
+    'playwright.config.mjs': '',
+    'CLAUDE.md': '',
+    'README.md': '',
+    '.prettierrc.json': '{}',
+  };
+  await withTree({}, undefined, async (root) => {
+    const before = await computeVersion(root);
+    for (const [p, c] of Object.entries(known)) await writeFile(join(root, p), c);
+    assert.equal(await computeVersion(root), before);
+  });
+});
+
+test('a CRLF sw.js restamps with CRLF block lines and is then stable', async () => {
+  await withTree({}, swWith('x').replace(/\n/g, '\r\n'), async (root) => {
+    assert.equal((await run(root)).code, 0);
+    const text = await readFile(join(root, 'sw.js'), 'utf8');
+    assert.ok(!/[^\r]\n/.test(text), 'no bare LF');
+    assert.equal((await run(root)).wrote, false);
+    assert.equal((await run(root, { check: true })).code, 0);
+  });
+});
+
+test('PRECACHE entries are JSON-quoted and hostile names are rejected', () => {
+  assert.match(
+    renderBlock('abc', ['manifest.json', 'src/a-b_c.js']),
+    /\["manifest.json", "src\/a-b_c.js"\];/,
+  );
+  for (const bad of [
+    "a'b.js",
+    'a"b.js',
+    'a\nb.js',
+    '../x.js',
+    'a/../b.js',
+    'https://x',
+    '/abs.js',
+    '',
+    'a b.js',
+  ]) {
+    assert.throws(() => renderBlock('abc', [bad]), /not a safe relative path/, JSON.stringify(bad));
   }
 });
 
@@ -94,7 +216,7 @@ test('adding a shell file changes the hash', async () => {
 test('files outside the shell do not change the hash', async () => {
   await withTree({}, undefined, async (root) => {
     const before = await computeVersion(root);
-    for (const p of ['docs/a.md', 'tests/t.js', 'node_modules/m/i.js', 'README.md', 'src/x.txt']) {
+    for (const p of ['docs/a.md', 'tests/t.js', 'node_modules/m/i.js', 'README.md']) {
       await mkdir(dirname(join(root, p)), { recursive: true });
       await writeFile(join(root, p), 'noise');
     }
