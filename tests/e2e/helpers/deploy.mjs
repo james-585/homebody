@@ -2,7 +2,7 @@
 // registration, caches and localStorage persist across "deploys" (one origin; two ports would be
 // two origins and could not test an upgrade). A deploy copies a build over the site directory,
 // sw.js last, like publishing a release. Nothing here touches the repo's own files.
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +17,13 @@ export async function versionOf(dir) {
   return /const VERSION = '([0-9a-f]{12})';/.exec(text)[1];
 }
 
+async function assertRegularSw(dir) {
+  const st = await lstat(join(dir, 'sw.js'));
+  if (!st.isFile()) throw new Error(`${dir}/sw.js is not a regular file`); // never follow a link
+}
+
 async function copyShell(from, to) {
+  await assertRegularSw(from);
   const files = [...(await listShellFiles(from)), 'sw.js'];
   for (const f of files) {
     await mkdir(dirname(join(to, f)), { recursive: true });
@@ -28,30 +34,41 @@ async function copyShell(from, to) {
 /** A copy of the repo's shipped shell (release "v1"). */
 export async function buildCurrent() {
   const dir = await mkdtemp(join(tmpdir(), 'hb-build-cur-'));
-  await copyShell(root, dir);
-  return {
-    dir,
-    version: await versionOf(dir),
-    cleanup: () => rm(dir, { recursive: true, force: true }),
-  };
+  try {
+    await copyShell(root, dir);
+    return {
+      dir,
+      version: await versionOf(dir),
+      cleanup: () => rm(dir, { recursive: true, force: true }),
+    };
+  } catch (err) {
+    await rm(dir, { recursive: true, force: true });
+    throw err;
+  }
 }
 
 /** The shell with one HTML comment appended to index.html and sw.js restamped in the copy ("v2"). */
 export async function buildVariant() {
   const dir = await mkdtemp(join(tmpdir(), 'hb-build-var-'));
-  await copyShell(root, dir);
-  const html = await readFile(join(dir, 'index.html'), 'utf8');
-  await writeFile(join(dir, 'index.html'), html + '\n<!-- hb-test-variant: next release -->\n');
-  const result = await stamp(dir);
-  if (result.code !== 0) throw new Error(result.message);
-  return {
-    dir,
-    version: await versionOf(dir),
-    cleanup: () => rm(dir, { recursive: true, force: true }),
-  };
+  try {
+    await copyShell(root, dir);
+    const html = await readFile(join(dir, 'index.html'), 'utf8');
+    await writeFile(join(dir, 'index.html'), html + '\n<!-- hb-test-variant: next release -->\n');
+    const result = await stamp(dir);
+    if (result.code !== 0) throw new Error(result.message);
+    return {
+      dir,
+      version: await versionOf(dir),
+      cleanup: () => rm(dir, { recursive: true, force: true }),
+    };
+  } catch (err) {
+    await rm(dir, { recursive: true, force: true });
+    throw err;
+  }
 }
 
 async function deployInto(buildDir, siteDir) {
+  await assertRegularSw(buildDir);
   const files = (await listShellFiles(buildDir)).filter((f) => f !== 'sw.js');
   for (const f of files) {
     await mkdir(dirname(join(siteDir, f)), { recursive: true });
@@ -63,8 +80,14 @@ async function deployInto(buildDir, siteDir) {
 /** One static site on one origin. `deploy(buildDir)` publishes a build over it. */
 export async function createSite(buildDir) {
   const dir = await mkdtemp(join(tmpdir(), 'hb-site-'));
-  await deployInto(buildDir, dir);
-  const server = await startServer(dir, 0);
+  let server;
+  try {
+    await deployInto(buildDir, dir);
+    server = await startServer(dir, 0);
+  } catch (err) {
+    await rm(dir, { recursive: true, force: true });
+    throw err;
+  }
   return {
     dir,
     url: server.url,
@@ -138,7 +161,12 @@ export async function installProbes(page) {
       !!g.document.getElementById('wm-overlay');
     new g.MutationObserver((records) => {
       for (const r of records) {
-        if (r.type === 'attributes' && r.target.id === 'hb-update' && !r.target.hidden) {
+        if (
+          r.type === 'attributes' &&
+          r.target.id === 'hb-update' &&
+          r.target.classList.contains('hb-on') &&
+          !(r.oldValue || '').split(' ').includes('hb-on')
+        ) {
           const toasts = g.document.getElementById('m-toasts')?.childElementCount ?? 0;
           g.__log.push({ e: 'banner-shown', t: g.performance.now(), active: active(), toasts });
         }
@@ -153,7 +181,8 @@ export async function installProbes(page) {
       subtree: true,
       childList: true,
       attributes: true,
-      attributeFilter: ['hidden'],
+      attributeFilter: ['class'],
+      attributeOldValue: true,
     });
   });
 }
