@@ -1,0 +1,302 @@
+{
+  "count": 74,
+  "renderedText": "Plank 120sec Side Plank 45sec KB Press 12kg Glute Bridge J-Press e1RM: 22kg 16kg KB Goblet Squat e1RM: 27kg · Novice 20kg KB Curtsy Lunge e1RM: 21kg 16kg KB Farmer's Walk e1RM: 23kg 10kg DB Bicep Curl e1RM: 15kg · Intermediate 10kg",
+  "state": {
+    "Ab Crunch": {
+      "unit": "kg",
+      "value": 5
+    },
+    "Bodyweight Lunge": {
+      "unit": "kg",
+      "value": 10
+    },
+    "Bodyweight Squat": {
+      "unit": "kg",
+      "value": 10
+    },
+    "Calf Raise": {
+      "unit": "kg",
+      "value": 10
+    },
+    "Curtsy Lunge": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Bent-Over Row": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Bicep Curl": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Bicep Curl to Overhead Press": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Bulgarian Split Squat": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Calf Raise": {
+      "unit": "kg",
+      "value": 20
+    },
+    "DB Chest Fly": {
+      "unit": "kg",
+      "value": 5
+    },
+    "DB Close-Grip Press": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Concentration Curl": {
+      "unit": "kg",
+      "value": 16
+    },
+    "DB Curl": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Floor Fly": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Floor Press": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Floor Tate Press": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Goblet Squat": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Gorilla Row": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Hammer Curl": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Kickback": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Lateral Raise": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Overhead Press": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Overhead Tricep Extension": {
+      "unit": "kg",
+      "value": 16
+    },
+    "DB Rear Delt Fly": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Romanian Deadlift": {
+      "unit": "kg",
+      "value": 20
+    },
+    "DB Russian Twist": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Side Bend": {
+      "unit": "sec",
+      "value": 30
+    },
+    "DB Single-Arm Row": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Single-Leg Calf Raise": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Stiff-Leg Deadlift": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Sumo Squat": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Sumo Squat with Capf Raise": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Tate Press": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Walking Lunge": {
+      "unit": "kg",
+      "value": 10
+    },
+    "DB Y-Raise": {
+      "unit": "kg",
+      "value": 5
+    },
+    "DB Zottman Curl": {
+      "unit": "kg",
+      "value": 10
+    },
+    "Dead Bug": {
+      "unit": "kg",
+      "value": 10
+    },
+    "Farmer's Walk": {
+      "unit": "sec",
+      "value": 40
+    },
+    "Glute Bridge": {
+      "unit": "kg",
+      "value": 10
+    },
+    "Glute Bridge J-Press": {
+      "unit": "kg",
+      "value": 16
+    },
+    "Good Morning": {
+      "unit": "kg",
+      "value": 10
+    },
+    "Jack Knife": {
+      "unit": "kg",
+      "value": 5
+    },
+    "KB Around the World": {
+      "unit": "kg",
+      "value": 16
+    },
+    "KB Bent-Over Row": {
+      "unit": "kg",
+      "value": 17.25
+    },
+    "KB Calf Raise": {
+      "unit": "kg",
+      "value": 20
+    },
+    "KB Cossack Squat": {
+      "unit": "kg",
+      "value": 10
+    },
+    "KB Curl": {
+      "unit": "kg",
+      "value": 10
+    },
+    "KB Curtsy Lunge": {
+      "unit": "kg",
+      "value": 16
+    },
+    "KB Deadlift": {
+      "unit": "kg",
+      "value": 10
+    },
+    "KB Farmer's Walk": {
+      "unit": "kg",
+      "value": 10
+    },
+    "KB Floor Press": {
+      "unit": "kg",
+      "value": 16
+    },
+    "KB Front Raise": {
+      "unit": "kg",
+      "value": 10
+    },
+    "KB Glute Bridge": {
+      "unit": "kg",
+      "value": 20
+    },
+    "KB Goblet Squat": {
+      "unit": "kg",
+      "value": 20
+    },
+    "KB Gorilla Row": {
+      "unit": "kg",
+      "value": 16
+    },
+    "KB Hip Thrust": {
+      "unit": "kg",
+      "value": 16
+    },
+    "KB Lateral Raise": {
+      "unit": "kg",
+      "value": 10
+    },
+    "KB Lunge": {
+      "unit": "kg",
+      "value": 16
+    },
+    "KB Press": {
+      "unit": "kg",
+      "value": 12
+    },
+    "KB Romanian Deadlift": {
+      "unit": "kg",
+      "value": 20
+    },
+    "KB Russian Deadlift": {
+      "unit": "kg",
+      "value": 10
+    },
+    "KB Single-Leg Deadlift": {
+      "unit": "kg",
+      "value": 16
+    },
+    "KB Squat to Press": {
+      "unit": "kg",
+      "value": 16
+    },
+    "KB Sumo Deadlift": {
+      "unit": "kg",
+      "value": 16
+    },
+    "KB Swing to Squat": {
+      "unit": "kg",
+      "value": 16
+    },
+    "KB Tricep Extension": {
+      "unit": "kg",
+      "value": 16
+    },
+    "Plank": {
+      "unit": "sec",
+      "value": 120
+    },
+    "Seated Overhead Press": {
+      "unit": "kg",
+      "value": 10
+    },
+    "Side Plank": {
+      "unit": "sec",
+      "value": 45
+    },
+    "Single-Leg Glute Bridge": {
+      "unit": "kg",
+      "value": 5
+    },
+    "Sit up": {
+      "unit": "kg",
+      "value": 5
+    },
+    "Sumo Squat to Calf Raise": {
+      "unit": "kg",
+      "value": 10
+    },
+    "Walking Lunge": {
+      "unit": "kg",
+      "value": 10
+    }
+  }
+}

@@ -1,0 +1,13 @@
+index.html
+sw.js
+manifest.json
+tests/fixtures
+tests/golden
+package-lock.json
+docs
+node_modules
+test-results
+playwright-report
+.claude
+CLAUDE.md
+*.md
