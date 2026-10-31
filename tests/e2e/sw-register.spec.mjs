@@ -16,8 +16,20 @@ test('@smoke the worker registers, activates and caches the precache list', asyn
   siteURL,
 }) => {
   expect(VERSION).toBeTruthy();
+  await page.addInitScript(() => {
+    const s = globalThis.sessionStorage;
+    s.setItem('t3-docs', String(Number(s.getItem('t3-docs')) + 1));
+  });
   await page.goto(siteURL + 'index.html');
-  await page.waitForFunction(() => document.readyState === 'complete');
+  // The shipped page reloads once when the worker claims it (until T4), and with this fixture
+  // (page.route active) workerStart did not reliably tell the documents
+  // apart. Count documents instead: wait for the second one (the reload), already controlled.
+  await page.waitForFunction(
+    () =>
+      document.readyState === 'complete' &&
+      !!globalThis.navigator.serviceWorker.controller &&
+      Number(globalThis.sessionStorage.getItem('t3-docs')) >= 2,
+  );
   const result = await page.evaluate(async () => {
     const reg = await globalThis.navigator.serviceWorker.ready;
     // `ready` resolves while the worker is still 'activating'; wait for the activate handler.
