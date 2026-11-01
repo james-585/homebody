@@ -7,6 +7,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SYNTHETIC_DIR, listFiles, loadAllFixtures } from './helpers/load-fixtures.mjs';
+import { createStore } from './helpers/hb-storage.mjs';
+import { createLocalEngine } from './helpers/hb-storage.mjs';
+import { FakeStorage } from './helpers/fake-storage.mjs';
 import { applyMigrations, checkInvariants, toStoreDoc } from './helpers/migration-harness.mjs';
 
 /** The real migrations. Empty in T1: schema 1 is the shipped format. */
@@ -156,11 +159,18 @@ test('declared changes relax only what they name', () => {
   assert.deepEqual(checkInvariants([rekeys]), [], 'declared personalRecords rewrite passes');
 });
 
-// ---- not provable until a runner exists ------------------------------------------------------
+// ---- the real runner refuses unreadable data and never overwrites it ------------------------
 
-test('corrupt JSON blob fails safe and never overwrites the stored value', {
-  todo: 'needs the migration runner (T5/T6)',
-});
-test('future-version blob fails safe and never overwrites the stored value', {
-  todo: 'needs the migration runner (T5/T6)',
-});
+for (const [name, raw] of [
+  ['corrupt JSON', '{"workouts": [truncated'],
+  ['future-version', JSON.stringify({ workouts: [], schemaVersion: 99 })],
+]) {
+  test(`${name} blob fails safe and never overwrites the stored value`, async () => {
+    const fs = new FakeStorage({ vaultfit_v1: raw });
+    const store = createStore({ openEngines: [() => createLocalEngine(fs)] });
+    await store.load();
+    await assert.rejects(store.save({ workouts: [{ id: 1 }] }));
+    assert.equal(fs.getItem('vaultfit_v1'), raw, 'stored string is byte-identical');
+    assert.deepEqual(fs.log, [], 'nothing was written or removed');
+  });
+}

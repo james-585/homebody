@@ -66,3 +66,15 @@ Put it under `src/` or `fonts/`, run `npm run stamp`, commit `sw.js`. A runtime 
 - Install fetches every `PRECACHE` entry first (`cache: 'reload'`), rejects any answer that is not ok or was redirected (a captive portal or a Pages redirect must never be cached as `index.html`), and only then opens `homebody-<VERSION>` and stores the entries. A failure deletes the half-written cache, so no new cache is left and the previous worker stays in charge. `offline.spec.mjs` ("a failed precache fetch...") serves a release with a missing font as 404 and checks exactly that.
 - `ignoreSearch` on non-navigation assets is safe because shell assets are content-hashed with the release; a `?v=` never selects a different file.
 - Constraint: the redirect check relies on `fetch` following redirects by default (`res.redirected`); it does not detect a same-URL 200 that is an error page, which only a content hash could. Not addressed here.
+
+## Boot order and storage script (T5a)
+
+`index.html` still holds the main classic script, but `DOMContentLoaded` no longer starts the app
+by itself. A second classic script, `src/hb-storage.js` (migration runner, localStorage engine,
+store and boot in one file), loads the saved document, publishes `window.HB`, then calls
+`hbStart()` from the `DOMContentLoaded` event. It is a classic script, not an ES module: the module
+path measured about +100 ms on the first visible frame (ADR 0001 note). `src/**` is in the
+generated precache (`npm run stamp`), so it loads offline. A `<head>` flag `hb-booting` hides the
+body until `hbStart` ends (3 s failsafe); if the script fails to load, `hbBootFailed()` starts the
+app on empty state and `persistSave()` rejects without writing, so the stored data cannot be
+overwritten.
