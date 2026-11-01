@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { test, expect, openSeeded, seedStorage, seedData } from './helpers/seed.mjs';
 import { SYNTHETIC_DIR } from '../unit/helpers/load-fixtures.mjs';
 
+const N = seedData().workouts.length;
 const fixtureText = (name) => readFileSync(join(SYNTHETIC_DIR, `${name}.json`), 'utf8');
 
 test.describe('legacy keys (AC4)', () => {
@@ -57,7 +58,7 @@ test.describe('boot (AC1, principle 5)', () => {
     }));
     const visible = frames.filter((f) => f.visible);
     expect(visible.length).toBeGreaterThan(0);
-    expect(visible.every((f) => f.loaded === 149)).toBe(true);
+    expect(visible.every((f) => f.loaded === N)).toBe(true);
     expect(booting).toBe(false);
   });
 
@@ -476,7 +477,7 @@ test.describe('T5b review fixes', () => {
       ),
     ).toBe('rejected');
     expect(await page.evaluate(() => localStorage.getItem('vaultfit_v1'))).toBe(raw);
-    await page.waitForFunction(() => state.workouts.length === 149, null, { timeout: 8000 });
+    await page.waitForFunction((n) => state.workouts.length === n, N, { timeout: 8000 });
     await expect(page.locator(BAR)).toBeHidden();
     expect(
       await page.evaluate(() =>
@@ -506,4 +507,125 @@ test.describe('T5b review fixes', () => {
     expect(r.btn.right).toBeLessThanOrEqual(390);
     expect(r.h).toBeLessThanOrEqual(844 * 0.4 + 1);
   });
+
+  test('HB present but the load not finished: persistSave refuses, blob untouched, no false bar', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await openWorkout(page, siteURL);
+    const before = await page.evaluate(() => localStorage.getItem('vaultfit_v1'));
+    await page.evaluate(() => {
+      hbLoadedOk = false; // the window between the store existing and persistLoad finishing
+    });
+    expect(
+      await page.evaluate(() =>
+        persistSave().then(
+          () => 'saved',
+          () => 'rejected',
+        ),
+      ),
+    ).toBe('rejected');
+    expect(await page.evaluate(() => localStorage.getItem('vaultfit_v1'))).toBe(before);
+    await expect(page.locator(BAR)).toBeHidden();
+    await page.evaluate(() => {
+      hbLoadedOk = true;
+    });
+    expect(
+      await page.evaluate(() =>
+        persistSave().then(
+          () => 'saved',
+          () => 'rejected',
+        ),
+      ),
+    ).toBe('saved');
+  });
+
+  test('a storage script that throws at top level: failed-boot bar, empty state, blob untouched', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    const raw = JSON.stringify(seedData());
+    await page.route('**/src/hb-storage.js', (route) =>
+      route.fulfill({ contentType: 'text/javascript', body: 'throw new Error("boom");' }),
+    );
+    await seedStorage(page, { vaultfit_v1: raw, hb_seen_guide: '1' });
+    await page.goto(siteURL + 'index.html');
+    await expect(page.locator(BAR)).toContainText('Saving is not working');
+    expect(await page.evaluate(() => state.workouts.length)).toBe(0);
+    expect(
+      await page.evaluate(() =>
+        persistSave().then(
+          () => 'saved',
+          () => 'rejected',
+        ),
+      ),
+    ).toBe('rejected');
+    expect(await page.evaluate(() => localStorage.getItem('vaultfit_v1'))).toBe(raw);
+  });
+
+  test('a late error from hb-storage.js after a good boot does not show the hard bar', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await openWorkout(page, siteURL);
+    await page.evaluate(() =>
+      window.dispatchEvent(
+        new ErrorEvent('error', {
+          filename: location.origin + '/src/hb-storage.js',
+          message: 'late',
+        }),
+      ),
+    );
+    await page.waitForTimeout(100);
+    await expect(page.locator(BAR)).toBeHidden();
+    expect(
+      await page.evaluate(() =>
+        persistSave().then(
+          () => 'saved',
+          () => 'rejected',
+        ),
+      ),
+    ).toBe('saved');
+  });
+
+  for (const [w, h] of [
+    [375, 667],
+    [320, 568],
+  ]) {
+    test(`load-time bar at 200% text, ${w}px wide: the explanation is not covered and the buttons are reachable`, async ({
+      appPage: page,
+      siteURL,
+    }) => {
+      await page.setViewportSize({ width: w, height: h });
+      await page.addInitScript(() => {
+        document.addEventListener(
+          'DOMContentLoaded',
+          () => (document.documentElement.style.fontSize = '32px'),
+        );
+      });
+      await seedStorage(page, { vaultfit_v1: '{"workouts": [oops', hb_seen_guide: '1' });
+      await page.goto(siteURL + 'index.html');
+      await expect(page.locator(BAR)).toContainText('Saved data could not be read');
+      const r = await page.locator(BAR).evaluate((bar) => {
+        const b = bar.querySelector('.hb-b').getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          b.left + b.width / 2,
+          b.top + Math.min(b.height, 20) / 2,
+        );
+        const covered = !hit || !hit.closest('.hb-b');
+        bar.scrollTop = bar.scrollHeight;
+        const btns = [...bar.querySelectorAll('button:not([hidden])')].map((x) =>
+          x.getBoundingClientRect().toJSON(),
+        );
+        return { covered, h: bar.getBoundingClientRect().height, btns };
+      });
+      expect(r.covered).toBe(false);
+      expect(r.h).toBeLessThanOrEqual(h * 0.5 + 1);
+      expect(r.btns).toHaveLength(2);
+      for (const b of r.btns) {
+        expect(b.right).toBeLessThanOrEqual(w);
+        expect(b.bottom).toBeLessThanOrEqual(h);
+      }
+    });
+  }
 });

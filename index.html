@@ -1117,13 +1117,13 @@ function persistLoad() {
   try {
     const s = window.HB && window.HB.storage.loaded();
     if (!s) return;
-    hbLoadedOk = true;
     if (s.workouts) state.workouts = s.workouts;
     if (s.personalRecords) state.personalRecords = s.personalRecords;
     if (s.bodyMetrics) state.bodyMetrics = s.bodyMetrics;
     if (s.userPlans) state.userPlans = s.userPlans;
     if (s.profile) state.profile = s.profile;
     if (s.favourites) state.favourites = s.favourites;
+    hbLoadedOk = true; // only once every field was copied
   } catch(e) {}
 }
 
@@ -7309,6 +7309,8 @@ if (screen.orientation && screen.orientation.lock) {
     '#hb-save .hb-b{font-family:Inter,sans-serif;font-size:0.85rem;line-height:1.4;margin-top:2px}' +
     '#hb-save .hb-r{display:flex;gap:8px;margin-top:10px;position:sticky;bottom:-10px;background:var(--surface);padding:0 0 10px;margin-bottom:-10px}' +
     '#hb-save .hb-r button{flex:1 1 0;min-height:48px;min-width:96px}' +
+    '#hb-save.hb-load{max-height:50vh;max-height:50dvh}' +
+    '#hb-save.hb-load .hb-r{position:static;margin-bottom:0;padding-bottom:0}' +
     '#hb-save.hb-inline .hb-in{display:flex;gap:10px;align-items:center}' +
     '#hb-save.hb-inline .hb-h{flex:1 1 auto;min-width:0}' +
     '#hb-save.hb-inline .hb-r{margin:0;position:static;padding:0;flex:0 0 auto}' +
@@ -7347,7 +7349,8 @@ if (screen.orientation && screen.orientation.lock) {
 
   function view() {
     if (S.load) {
-      const raw = rawStored();
+      if (S.rawHas === undefined) S.rawHas = rawStored() != null; // read once per state, not per render
+      const raw = S.rawHas;
       return { title: COPY[S.load][0], body: COPY[S.load][1], warn: true, btns: raw ? ['raw', 'export'] : ['export'], inline: !raw };
     }
     if (S.main) {
@@ -7391,6 +7394,7 @@ if (screen.orientation && screen.orientation.lock) {
     } else {
       tEl.textContent = v.title; bEl.textContent = v.body;
       bar.classList.toggle('hb-inline', !!v.inline && !forceRow);
+      bar.classList.toggle('hb-load', !!S.load && !v.inline);  // load-time bars: up to 50dvh, buttons not sticky
       bar.classList.toggle('hb-ok', !!v.ok); bar.classList.toggle('hb-warn', !!v.warn);
       mk.className = 'hb-mk ' + (v.bad ? 'hb-bad' : v.warn ? 'hb-pause' : 'hb-tick');
       mk.textContent = v.bad ? '!' : v.ok ? '✓' : '';
@@ -7437,12 +7441,15 @@ if (screen.orientation && screen.orientation.lock) {
   window.hbSaveBarAttach = function (storage) {
     if (S.soft) { S.load = null; S.soft = false; }
     const st = storage.status();
-    if (st.state === 'readonly') S.load = st.error;
+    if (st.state === 'readonly') { S.load = st.error; S.rawHas = undefined; }
     else if (st.error) { S.main = st.error; S.phase = 'failed'; }
     storage.subscribe(onStore);
     render();
   };
-  window.hbSaveBarLoad = function (reason, soft) { S.load = reason; S.soft = !!soft; render(); };      // hbBootFailed: no store
+  window.hbSaveBarLoad = function (reason, soft) {
+    if (soft && (S.load || window.HB)) return;   // a soft call never overwrites a real reason or a live store
+    S.load = reason; S.soft = !!soft; S.rawHas = undefined; render();
+  };      // hbBootFailed: no store
   window.hbSaveBarWmFailed = function () { wmFlag = true; if (userRetry) return; S.wm = true; S.ok = false; render(); };
 
   async function doRetry() {
@@ -7496,7 +7503,9 @@ function hbStart() {
 // The module failed to load or run: start on empty state. window.HB stays unset, so persistSave()
 // rejects and nothing is ever written over the stored data.
 // A storage script that loads but throws never reaches hbStart: treat it like a failed load.
-window.addEventListener('error', e => { if (e.filename && /hb-storage\.js(\?|$)/.test(e.filename)) hbBootFailed(); });
+// Only before the store exists: a late callback error after a good boot must not show the hard
+// "Saving is not working" bar (nor replace a corrupt/newer-version bar).
+window.addEventListener('error', e => { if (!hbStarted && !window.HB && !hbLoadedOk && e.filename && /hb-storage\.js(\?|$)/.test(e.filename)) hbBootFailed(); });
 function hbBootFailed() {
   if (window.hbSaveBarLoad) window.hbSaveBarLoad('unavailable'); // state 8, before the first visible frame
   hbStart();
