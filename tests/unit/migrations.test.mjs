@@ -7,13 +7,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SYNTHETIC_DIR, listFiles, loadAllFixtures } from './helpers/load-fixtures.mjs';
-import { createStore } from './helpers/hb-storage.mjs';
+import { createStore, MIGRATIONS } from './helpers/hb-storage.mjs';
 import { createLocalEngine } from './helpers/hb-storage.mjs';
 import { FakeStorage } from './helpers/fake-storage.mjs';
 import { applyMigrations, checkInvariants, toStoreDoc } from './helpers/migration-harness.mjs';
-
-/** The real migrations. Empty in T1: schema 1 is the shipped format. */
-const MIGRATIONS = [];
 
 test('there are fixtures to run against, from both folders', () => {
   const all = loadAllFixtures();

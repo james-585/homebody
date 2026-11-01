@@ -5,9 +5,11 @@ Status: first version written by storage-sync-engineer during T5; **to be review
 ## Storage inventory (everything the app keeps on the device)
 | Where | Name | Holds | Notes |
 | --- | --- | --- | --- |
-| localStorage | `vaultfit_v1` | Main document: workouts, personal records, body metrics (health data), plans, profile, favourites | Schema 1; the only key the app saves history to |
+| IndexedDB | database `homebody`, stores `workouts`, `records`, `meta` | The live data (schema 2): workouts, personal records, body metrics (health data), plans, profile, favourites; `meta` holds `schemaVersion`, `seq`, `migratedFrom`, `migratedAt`, `persistAskedAt`, `persistGranted`, `lastBackupAt` (reserved) | T6. Each save is one transaction. Records are copied out by name (a whitelist), never merged by key |
+| IndexedDB | database `homebody`, store `snapshots` | Verbatim copies of the whole document: `pre-migration` (the first one is kept until the user deletes it), `pre-reconcile`, `pre-restore`, and later `pre-import` (T7); the last 5 plus the kept one | **Extra on-device copies of health data**: they count as user data and must go with delete-all. Never rendered; a restore payload goes through the migration runner |
+| localStorage | `vaultfit_v1` | The v1 **mirror** of the live data: exactly the six-key blob `persistSave` has always written, plus one ignorable key `hbSeq` (the commit counter) | Written synchronously on every save so a pre-M1 build (rollback) reads current history. Migration does not rewrite it: it stays byte for byte as found until the first save (IndexedDB `meta.mirrorSig`, a length+FNV fingerprint, recognises it). Kept for all of M1; removing it needs its own ADR. About the size of the whole history (about 5% of a typical 5 MB budget at the fixture size) |
 | localStorage | `homebody_v1`, `homebody_v0`, `vaultfit_v0` | Legacy copies of the main document | Read and copied once when `vaultfit_v1` is absent; never modified or removed by the app |
-| localStorage | `hb_storage_meta` | `persistAskedAt` (timestamp) and `persistGranted` (true, false, `unsupported`, `error`) | Sidecar added in T5b; read with a 1 KB cap, fields copied by name |
+| localStorage | `hb_storage_meta` | `persistAskedAt` (timestamp), `persistGranted` (true, false, `unsupported`, `error`) and, since T6, `idbSeq` (the commit counter of the last IndexedDB commit, an integer) | Sidecar added in T5b; read with a 1 KB cap, fields copied by name. `idbSeq` lets the next boot prove the mirror equals IndexedDB (fast boot) |
 | localStorage | `hb_active_workout` | The workout in progress | Written on every set by `wmPersist` |
 | localStorage | `hb_milestones` | Milestones already shown | |
 | localStorage | `hb_theme`, `hb_seen_guide`, `hb_seen_tutorial` | UI preferences and first-run flags | |
@@ -15,13 +17,14 @@ Status: first version written by storage-sync-engineer during T5; **to be review
 | Service worker | registration for this scope | Offline shell | |
 | localStorage | `hb_probe_missing_key` | Never written | Read once to prove storage works |
 
-Not used yet: sessionStorage, IndexedDB (T6 will add a database), cookies. No network storage, no accounts, no analytics.
+Not used: sessionStorage (the tests only), cookies. IndexedDB holds the data since T6 (rows above). No network storage, no accounts, no analytics.
 
 ## "Delete all my data" rules (for T8 or whoever builds it)
 - Remove the listed localStorage keys **one by one**. Never `localStorage.clear()`: the github.io origin is shared with other projects (K20).
 - Delete only caches whose name starts with `homebody-`. Unregister only the service worker whose scope is this app.
 - Before deleting: stop the `wmPersist` tick (it re-creates `hb_active_workout`), and stop any pending store retry or queued write (it would re-create `vaultfit_v1`). Delete, then reload.
-- Keep the key list in one place in the code, and add the T6 IndexedDB database to it when it exists.
+- The key list is in one place in the code: `HBStorage.KEYS` (`localStorage`: every key above; `indexedDB`: `['homebody']`), covered by a test that records every key written in a full fake session.
+- IndexedDB: close the store's connection, stop queued writes (as above), then `indexedDB.deleteDatabase('homebody')` and wait for it to finish (a connection left open makes it `blocked`). Deleting the database removes the live stores **and** every snapshot. `hb_storage_meta` is read once into IndexedDB `meta` and left in place, so delete it too. Delete the `vaultfit_v1` mirror: it is a full copy.
 - Tell the user what stays: exported `.vaultfit` files and the raw `.txt` file are in their Downloads and the app cannot remove them; and a persistent-storage grant from the browser (`persist()`) cannot be withdrawn by the app.
 
 ## Raw "as found" export
@@ -30,6 +33,10 @@ Not used yet: sessionStorage, IndexedDB (T6 will add a database), cookies. No ne
 ## Protections against overwriting or losing data
 - Corrupt or newer-than-known stored data: the store loads empty in memory, goes read-only and never writes `vaultfit_v1`.
 - `hbLoadedOk`: `persistSave` refuses to write until `persistLoad` has copied the stored document into state this session, so a storage script that loads late cannot overwrite saved data with the empty startup state. If the storage script fails to load or throws before the store exists, `hbBootFailed()` starts the app on empty state and nothing is written. `wmPersist`, the `WM_KEY` removal and `hb_milestones` writes are not covered (K29).
+- IndexedDB (T6): migration and every save are single transactions (all or nothing; tested with an abort part-way). The first migration commits a verbatim snapshot of the source text in the same transaction as the data and the schema marker, so nothing is marked migrated without its way back. The source and the legacy keys are never modified by the migration. `restore(id)` refuses during a workout, snapshots the present state first, and then the store is read-only until reload.
+- Which copy wins at boot: a mirror with no `hbSeq` (a pre-M1 build or a localStorage fallback session wrote it) whose fingerprint is not `meta.mirrorSig`, or with `hbSeq` above `meta.seq`, is newer: IndexedDB is snapshotted (`pre-reconcile`), then the mirror is imported. A mirror at or below `meta.seq` is stale and ignored. A corrupt or newer-than-known mirror is ignored and left as found. Corrupt IndexedDB (data without valid meta) or `schemaVersion` above the app's: empty, read-only, never written; `Export saved file` still reads the mirror text.
+- IndexedDB unavailable, blocked, erroring or silent for 1.2 s: the localStorage engine runs the session (`status().fallback`), and its unmarked blob is imported (with a snapshot) on the next IndexedDB boot. A connection that opens late is closed. `onversionchange` closes the connection; the next save reopens it.
+- A failed mirror write is logged and shown as `status().mirror: 'stale'`, never as a save error; the IndexedDB commit is the save.
 - Legacy keys are copied, never removed. A quota failure while adopting leaves everything intact.
 - The sidecar `hb_storage_meta` is ignored if 1 KB or larger, or if it is not a plain object; unknown fields are dropped; no prototype pollution (tested).
 - Failure messages shown to the user are fixed strings chosen by error kind; raw exception text is never rendered.
@@ -44,4 +51,4 @@ Requested once, after the first successful save whose payload contains at least 
 There is no CSP. Adopting one would need hashes or nonces for the inline boot script in `<head>` and the inline `onerror` attribute on the storage script tag (replace with `addEventListener`), plus the many inline handlers in `index.html` (K15, K20).
 
 ## Open items
-K20 (shared origin), K29 (pre-load window and `hbLoadedOk` coverage), K30 (plain Export in unreadable-data states looks normal; only `vaultfit_v1` is raw-readable when HB failed to boot).
+K20 (shared origin), K29 (pre-load window and `hbLoadedOk` coverage, reduced), K31 (two tabs both saving is last write wins), K30 (plain Export in unreadable-data states looks normal; only `vaultfit_v1` is raw-readable when HB failed to boot).

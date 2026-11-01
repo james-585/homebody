@@ -78,3 +78,19 @@ generated precache (`npm run stamp`), so it loads offline. A `<head>` flag `hb-b
 body until `hbStart` ends (3 s failsafe); if the script fails to load, `hbBootFailed()` starts the
 app on empty state and `persistSave()` rejects without writing, so the stored data cannot be
 overwritten.
+
+## Boot with IndexedDB (T6a)
+
+Cold start is kept at the pre-M1 level (measured: first visible frame within 2% of `main` in
+Chromium, steady state and first boot after the upgrade). A simple IndexedDB-first boot measured
++35 to +50 ms, so `src/hb-storage.js` boots from the `vaultfit_v1` mirror, as before M1, whenever
+that is provably equal to IndexedDB: the mirror is unmarked (it always wins at boot), or its
+`hbSeq` equals the `idbSeq` the sidecar recorded after the last IndexedDB commit. IndexedDB is
+opened right after the first paint (`HB.storage.ready()` resolves when it is attached) and
+decides: migrate on first use (one transaction with a verbatim snapshot), import the mirror if it
+is newer, or fall back to localStorage when IndexedDB is missing, errors, is blocked or does not
+answer within 1.2 s. Saves made before it attaches write the mirror as plain v1 text at once and
+commit to IndexedDB when it is ready. Anything not provable (no mirror, no sidecar proof, corrupt
+data) takes the slower path that opens IndexedDB first. Nothing here needs the network; the
+cached shell, the service worker and the update flow are unchanged, so airplane-mode opening works
+as before, and an older cached `index.html` still opens with the same history.

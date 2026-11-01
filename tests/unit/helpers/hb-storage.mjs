@@ -4,6 +4,11 @@ import '../../../src/hb-storage.js';
 export const {
   runMigrations,
   CURRENT_SCHEMA,
+  LATEST_SCHEMA,
+  MIGRATIONS,
+  projectToV1,
+  createIdbEngine,
+  KEYS,
   createLocalEngine,
   createStore,
   classifyError,
