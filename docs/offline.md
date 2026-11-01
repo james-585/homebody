@@ -71,7 +71,7 @@ Put it under `src/` or `fonts/`, run `npm run stamp`, commit `sw.js`. A runtime 
 
 `index.html` still holds the classic script, but `DOMContentLoaded` no longer starts the app. A
 `<script type="module" src="src/boot.js">` builds the store (`src/storage/`), loads the saved
-document, publishes `window.HB`, then calls `hbStart()`. `src/**` files are in the generated
+document, publishes `window.HB`, then calls `hbStart()` from the `DOMContentLoaded` event. `boot.js` has no top-level await, because a module that awaits holds `DOMContentLoaded`. `src/**` files are in the generated
 precache (`npm run stamp`), so the module graph loads offline. A `<head>` flag `hb-booting` hides
 the body until `hbStart` ends (with a 3 s failsafe); if the module graph fails to load,
 `hbBootFailed()` starts the app on empty state and `persistSave()` rejects without writing, so the
