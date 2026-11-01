@@ -180,14 +180,15 @@ base.describe('AC4: the pre-M1 build sees the history after migration', () => {
       );
       await page.goto(site.url + 'index.html');
       await ready(page);
-      await page.evaluate(() => {
-        state.workouts.push({
+      const logged = await page.evaluate(() => {
+        const w = {
           id: 5150,
           name: 'Logged after migration',
           date: new Date().toISOString(),
           exercises: [],
-        });
-        return persistSave();
+        };
+        state.workouts.push(w);
+        return persistSave().then(() => w);
       });
       expect((await dump(page)).workouts).toHaveLength(N + 1);
       await site.deploy(old.dir); // the same origin and profile now serves the frozen pre-M1 build
@@ -195,8 +196,10 @@ base.describe('AC4: the pre-M1 build sees the history after migration', () => {
       await page.waitForFunction(
         () => typeof state !== 'undefined' && document.readyState === 'complete',
       );
-      expect(await page.evaluate(() => state.workouts.length)).toBe(N + 1);
-      expect(await page.evaluate(() => state.workouts.some((w) => w.id === 5150))).toBe(true);
+      // the whole history, not just a count
+      expect(await page.evaluate(() => JSON.stringify(state.workouts))).toBe(
+        JSON.stringify([...SEED.workouts, logged]),
+      );
     } finally {
       await ctx.close();
       await site.close().catch(() => {});
@@ -340,7 +343,9 @@ test.describe('snapshots, failure and the boot rule', () => {
     await page.evaluate((id) => HB.storage.restore(id), list[0].id);
     await page.reload();
     await ready(page);
-    expect(await page.evaluate(() => state.workouts.length)).toBe(N);
+    expect(await page.evaluate(() => JSON.stringify(state.workouts))).toBe(
+      JSON.stringify(SEED.workouts),
+    );
     const after = await page.evaluate(() => HB.storage.snapshots());
     expect(after.map((s) => s.reason)).toEqual(['pre-migration', 'pre-restore']);
     const m = await mirror(page);
@@ -446,6 +451,47 @@ test.describe('snapshots, failure and the boot rule', () => {
     expect(d.workouts).toHaveLength(N + 1);
     expect(d.snapshots.map((s) => s.reason)).toContain('pre-reconcile');
   });
+
+  for (const [label, kind, title] of [
+    ['future', 'future', 'Saved by a newer version'],
+    ['corrupt', 'corrupt', 'Saved data could not be read'],
+  ]) {
+    test(`${label}-schema IndexedDB plus a matching mirror shows the load-time bar and saves are refused visibly`, async ({
+      appPage: page,
+      siteURL,
+    }) => {
+      await openApp(page, siteURL);
+      await page.evaluate(() => persistSave()); // marks the mirror and the sidecar: the next boot is a fast boot
+      await page.evaluate(
+        (k) =>
+          new Promise((res, rej) => {
+            const r = globalThis.indexedDB.open('homebody');
+            r.onsuccess = () => {
+              const db = r.result;
+              const tx = db.transaction('meta', 'readwrite');
+              if (k === 'future') tx.objectStore('meta').put(99, 'schemaVersion');
+              else tx.objectStore('meta').delete('schemaVersion');
+              tx.oncomplete = () => (db.close(), res());
+              tx.onabort = () => rej(tx.error);
+            };
+          }),
+        kind,
+      );
+      const before = await dump(page);
+      await page.reload();
+      await page.waitForFunction(() => !!window.HB && state.workouts.length > 0);
+      await page.evaluate(() => HB.storage.ready());
+      await expect(page.locator(BAR)).toContainText(title);
+      await page.evaluate(() => {
+        state.workouts.push({ id: 7001, name: 'refused', exercises: [] });
+        return persistSave().catch(() => {});
+      });
+      await expect(page.locator(BAR)).toContainText(title);
+      const after = await dump(page);
+      expect(after.workouts).toHaveLength(before.workouts.length);
+      expect(after.meta).toEqual(before.meta);
+    });
+  }
 
   test('onversionchange closes the connection; the next save reopens it', async ({
     appPage: page,

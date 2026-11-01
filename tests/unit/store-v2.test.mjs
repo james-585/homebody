@@ -14,6 +14,9 @@ import {
   KEYS,
   STORAGE_KEY,
   projectToV1,
+  decideBoot,
+  canFastBoot,
+  hbSeqOf,
 } from './helpers/hb-storage.mjs';
 import { FakeStorage, quotaError } from './helpers/fake-storage.mjs';
 import { createFakeIDB } from './helpers/fake-idb.mjs';
@@ -23,7 +26,7 @@ import {
   loadRealExport,
   stripHeader,
 } from './helpers/load-fixtures.mjs';
-import { applyMigrations, toStoreDoc } from './helpers/migration-harness.mjs';
+import { applyMigrations, documentViolations, toStoreDoc } from './helpers/migration-harness.mjs';
 
 const V1 = stripHeader(loadRealExport());
 const V1_TEXT = JSON.stringify(V1);
@@ -35,9 +38,12 @@ function rig({
   timeoutMs = 200,
   nav = null,
   fast = false,
+  setTimer = (fn) => setTimeout(fn, 0),
+  attachTimeoutMs,
+  txTimeoutMs,
 } = {}) {
   let t = 1000;
-  const openIdb = () => createIdbEngine({ factory: fake.factory, timeoutMs }).open();
+  const openIdb = () => createIdbEngine({ factory: fake.factory, timeoutMs, txTimeoutMs }).open();
   openIdb.idb = true;
   const make = () =>
     createStore({
@@ -46,7 +52,8 @@ function rig({
       current: LATEST_SCHEMA,
       fastBoot: fast,
       retryDelayMs: 0,
-      setTimer: (fn) => setTimeout(fn, 0),
+      setTimer,
+      attachTimeoutMs,
       now: () => (t += 10),
       nav,
     });
@@ -73,17 +80,22 @@ test('LATEST_SCHEMA is 2 and migration 001 is the only link in the chain', () =>
   );
 });
 
-test('AC3: projectToV1(migrate(fixture)) deep-equals the fixture data, key order too', () => {
+test('AC3: projectToV1(migrate(fixture)) equals the fixture text itself, key order too', () => {
+  const six = ['workouts', 'personalRecords', 'bodyMetrics', 'userPlans', 'profile', 'favourites'];
+  let compared = 0;
   for (const fx of loadAllFixtures()) {
     const d = toStoreDoc(fx);
-    if (!d || 'seq' in d || 'hbSeq' in d) continue;
-    const six = projectToV1(d);
+    if (!d) continue;
+    const { hbSeq, ...expected } = d; // eslint-disable-line no-unused-vars
+    if (!Object.keys(expected).every((k) => six.includes(k))) continue;
     assert.equal(
       JSON.stringify(projectToV1(applyMigrations(MIGRATIONS, d))),
-      JSON.stringify(six),
+      JSON.stringify(expected),
       fx.file,
     );
+    compared++;
   }
+  assert.ok(compared >= 5, `compared ${compared} fixtures`);
 });
 
 test('first boot: one transaction migrates, snapshots the source byte for byte, leaves the key readable', async () => {
@@ -131,7 +143,7 @@ test('two tabs booting together migrate once', async () => {
 
 for (const key of ['homebody_v1', 'homebody_v0', 'vaultfit_v0']) {
   test(`legacy key ${key} is adopted, migrated and left untouched`, async () => {
-    const raw = V1_TEXT.replace('"workouts"', '"workouts"');
+    const raw = V1_TEXT;
     const fs = new FakeStorage({ [key]: raw });
     const r = rig({ fs });
     const doc = await r.make().load();
@@ -207,7 +219,7 @@ test('mirror reconcile: hbSeq above meta.seq (killed before the commit) is newer
   assert.ok(idbSnaps(r.fake).some((s) => s.reason === 'pre-reconcile'));
 });
 
-test('mirror reconcile: equal or behind is stale and ignored; behind is reported', async () => {
+test('mirror reconcile: equal is in sync; behind is stale, ignored and rewritten from IndexedDB', async () => {
   for (const delta of [0, -1]) {
     const r = await migrated();
     const seq = idbMeta(r.fake).seq;
@@ -216,7 +228,13 @@ test('mirror reconcile: equal or behind is stale and ignored; behind is reported
     const doc = await store.load();
     assert.equal(doc.workouts.length, N, `delta ${delta}: IndexedDB wins`);
     assert.equal(idbSnaps(r.fake).length, 1);
-    assert.equal(store.status().mirror, delta ? 'stale' : 'ok');
+    await new Promise((res) => setTimeout(res, 5));
+    if (delta) {
+      // a stale mirror is rewritten from IndexedDB at once, so rollback copies are current again
+      assert.equal(mirrorOf(r.fs).workouts.length, N, `delta ${delta}`);
+      assert.equal(mirrorOf(r.fs).hbSeq, seq);
+      assert.equal(store.status().mirror, 'ok');
+    }
   }
 });
 
@@ -371,13 +389,13 @@ test('retention: the last 5 plus the first pre-migration snapshot', async () => 
   const r = rig({ fs: seeded() });
   const store = r.make();
   await store.load();
-  for (let i = 0; i < 8; i++) await store.snapshot(`manual-${i}`);
+  for (let i = 0; i < 8; i++) await store.snapshot('manual');
   const list = await store.snapshots();
   assert.equal(list.length, 6);
   assert.equal(list[0].reason, 'pre-migration', 'the keep:true one survives');
   assert.deepEqual(
     list.slice(1).map((s) => s.reason),
-    ['manual-3', 'manual-4', 'manual-5', 'manual-6', 'manual-7'],
+    Array(5).fill('manual'),
   );
 });
 
@@ -607,4 +625,249 @@ test('the schema 2 store dump fixture is exactly what the stores hold after migr
   assert.equal(JSON.stringify(JSON.parse(mirrorFixture).hbSeq), '1');
   const { hbSeq, ...six } = JSON.parse(mirrorFixture); // eslint-disable-line no-unused-vars
   assert.equal(JSON.stringify(six), V1_TEXT, 'the mirror fixture is the v1 data plus hbSeq');
+});
+
+// ---- review batch: pure boot decision, stale-mirror fixes, read-only gate ------------------------
+const D = (o) => decideBoot({ current: 2, ...o });
+const stored = (seq, meta = {}, schemaVersion = 2) => ({ doc: { schemaVersion }, seq, meta });
+
+test('decideBoot: the table', () => {
+  const rows = [
+    [{ stored: { corrupt: true }, mirrorRaw: 'x' }, 'readonly', 'corrupt'],
+    [{ stored: stored(1, {}, 3), mirrorRaw: 'x' }, 'readonly', 'future'],
+    [{ stored: null, mirrorRaw: null }, 'empty'],
+    [{ stored: null, mirrorRaw: '{}' }, 'migrate'],
+    [{ stored: stored(3), mirrorRaw: null }, 'use-idb'],
+    [{ stored: stored(3), mirrorRaw: 'm', mirrorSeq: 4 }, 'import-mirror'],
+    [{ stored: stored(3), mirrorRaw: 'm', mirrorSeq: 3 }, 'use-idb'],
+    [{ stored: stored(3), mirrorRaw: 'm', mirrorSeq: 2 }, 'use-idb', undefined, 'stale'],
+    [{ stored: stored(3), mirrorRaw: 'm', mirrorSeq: 2, rendered: true }, 'readonly', 'stale'],
+    [{ stored: stored(3), mirrorRaw: 'm', mirrorSeq: 4, rendered: true }, 'import-mirror'],
+    [
+      { stored: stored(1, { mirrorSig: 'a', mirrorSigSeq: 1 }), mirrorRaw: 'm', mirrorSig: 'a' },
+      'use-idb',
+      undefined,
+      'ok',
+    ],
+    [
+      { stored: stored(1, { mirrorSig: 'a', mirrorSigSeq: 1 }), mirrorRaw: 'm', mirrorSig: 'b' },
+      'import-mirror',
+    ],
+    [
+      { stored: stored(3, { mirrorSig: 'a', mirrorSigSeq: 1 }), mirrorRaw: 'm', mirrorSig: 'a' },
+      'use-idb',
+      undefined,
+      'stale',
+    ],
+    [
+      {
+        stored: stored(3, { mirrorSig: 'a', mirrorSigSeq: 1 }),
+        mirrorRaw: 'm',
+        mirrorSig: 'a',
+        rendered: true,
+      },
+      'readonly',
+      'stale',
+    ],
+  ];
+  for (const [input, action, kind, mirror] of rows) {
+    const d = D(input);
+    assert.equal(d.action, action, JSON.stringify(input));
+    if (kind) assert.equal(d.kind, kind);
+    if (mirror) assert.equal(d.mirror, mirror);
+  }
+});
+
+test('canFastBoot: marked needs the matching sidecar; unmarked needs no commit ever noted', () => {
+  assert.equal(canFastBoot({ mirrorSeq: 5, sidecar: { idbSeq: 5 } }), true);
+  assert.equal(canFastBoot({ mirrorSeq: 5, sidecar: { idbSeq: 6 } }), false);
+  assert.equal(canFastBoot({ mirrorSeq: 5, sidecar: {} }), false);
+  assert.equal(canFastBoot({ mirrorSeq: null, sidecar: {} }), true);
+  assert.equal(canFastBoot({ mirrorSeq: null, sidecar: { idbSeq: 2 } }), false);
+});
+
+test('hbSeqOf and the mirror text survive hostile content', async () => {
+  assert.equal(hbSeqOf('{"a":1,"hbSeq":7}'), 7);
+  assert.equal(hbSeqOf('{"a":{"hbSeq":7}}'), null);
+  assert.equal(hbSeqOf('{"hbSeq":7,"a":1}'), null);
+  assert.equal(hbSeqOf(JSON.stringify({ favourites: ['"hbSeq":9}'] })), null);
+  for (const hostile of ['"hbSeq":9}', '\\"hbSeq\\":9}', '}","hbSeq":99', 'x\n}', '\u2028']) {
+    const r = rig({ fs: new FakeStorage() });
+    const store = r.make();
+    await store.load();
+    await store.save({ workouts: [{ id: 1, notes: hostile }], favourites: [hostile] });
+    const raw = r.fs.getItem(STORAGE_KEY);
+    assert.equal(hbSeqOf(raw), 1, hostile);
+    const m = JSON.parse(raw);
+    assert.equal(m.workouts[0].notes, hostile);
+    assert.equal(m.hbSeq, 1);
+  }
+});
+
+const settle = (ms = 15) => new Promise((res) => setTimeout(res, ms));
+async function staleMirrorRig(unmarked) {
+  const fs = new FakeStorage({ [STORAGE_KEY]: V1_TEXT });
+  const r = rig({ fs });
+  const s1 = r.make();
+  const d = await s1.load();
+  if (!unmarked) {
+    await s1.save(payload(d));
+    await settle();
+  }
+  fs.failWrites = quotaError;
+  fs.failKeys = [STORAGE_KEY, 'hb_storage_meta'];
+  for (const id of [1, 2]) {
+    d.workouts.unshift({ id, name: `NEW-${id}`, exercises: [] });
+    await s1.save(payload(d)).catch(() => {});
+    await settle();
+  }
+  fs.failWrites = null;
+  return { ...r, d };
+}
+const idbHas = (fake, name) =>
+  [...fake.inspect().stores.get('workouts').rows.values()].some((w) => w.name === name);
+
+for (const unmarked of [true, false]) {
+  test(`PoC ${unmarked ? 'A' : 'B'}: a stale ${unmarked ? 'unmarked' : 'marked'} mirror after failed mirror writes never overwrites newer IndexedDB`, async () => {
+    const r = await staleMirrorRig(unmarked);
+    assert.ok(idbHas(r.fake, 'NEW-1') && idbHas(r.fake, 'NEW-2'));
+    const s2 = rig({ fs: r.fs, fake: r.fake, fast: true }).make();
+    const d2 = await s2.load(); // rendered from the stale mirror
+    await s2.attach();
+    assert.equal(s2.status().error, 'unavailable', 'the load-time bar kind');
+    assert.equal(s2.status().state, 'readonly');
+    const rows = r.fake.inspect().stores.get('workouts').rows.size;
+    await assert.rejects(s2.save(payload(d2)), { kind: 'stale' });
+    await settle();
+    assert.equal(r.fake.inspect().stores.get('workouts').rows.size, rows);
+    assert.ok(idbHas(r.fake, 'NEW-1'), 'newer IndexedDB data untouched');
+    // the mirror was rewritten from IndexedDB, so the next boot is correct
+    const s3 = rig({ fs: r.fs, fake: r.fake, fast: true }).make();
+    const d3 = await s3.load();
+    await s3.attach();
+    assert.ok(d3.workouts.some((w) => w.name === 'NEW-2'));
+    assert.equal(s3.status().error, undefined);
+  });
+}
+
+for (const [label, mutate, kind] of [
+  ['future', (f) => f.inspect().stores.get('meta').rows.set('schemaVersion', 3), 'future'],
+  ['corrupt', (f) => f.inspect().stores.get('meta').rows.delete('schemaVersion'), 'corrupt'],
+]) {
+  test(`PoC C: a save queued before attach is refused over ${label} IndexedDB and nothing is written`, async () => {
+    const fs = seeded();
+    const r = rig({ fs });
+    const s1 = r.make();
+    const d = await s1.load();
+    await s1.save(payload(d));
+    await settle();
+    mutate(r.fake);
+    const before = JSON.stringify([...r.fake.inspect().stores.get('meta').rows]);
+    const rows = r.fake.inspect().stores.get('workouts').rows.size;
+    const s2 = rig({ fs, fake: r.fake, fast: true }).make();
+    const d2 = await s2.load();
+    const p = s2.save(payload(d2));
+    const outcome = p.then(
+      () => 'saved',
+      (e) => e.kind,
+    );
+    await s2.attach();
+    assert.equal(await outcome, kind);
+    await assert.rejects(s2.save(payload(d2)), { kind });
+    await settle();
+    assert.equal(JSON.stringify([...r.fake.inspect().stores.get('meta').rows]), before);
+    assert.equal(r.fake.inspect().stores.get('workouts').rows.size, rows);
+    assert.equal(s2.status().state, 'readonly', 'a refused save does not clear read-only');
+    assert.equal(s2.status().error, kind);
+  });
+}
+
+test('expectSeq: a commit by another tab is kept as pre-overwrite before being replaced', async () => {
+  const r = rig({ fs: seeded() });
+  const a = r.make();
+  const da = await a.load();
+  const b = rig({ fs: r.fs, fake: r.fake }).make();
+  const db = await b.load();
+  db.workouts.unshift({ id: 11, name: 'FROM-B', exercises: [] });
+  await b.save(payload(db));
+  da.workouts.unshift({ id: 12, name: 'FROM-A', exercises: [] });
+  await a.save(payload(da)); // a never saw b's commit
+  await settle();
+  const over = idbSnaps(r.fake).find((s) => s.reason === 'pre-overwrite');
+  assert.ok(over, "b's state is recoverable");
+  assert.ok(JSON.parse(over.payload).workouts.some((w) => w.name === 'FROM-B'));
+  assert.ok(idbHas(r.fake, 'FROM-A'));
+});
+
+test('deferred commit: the mirror is written at once; a kill before the commit imports it next boot', async () => {
+  const timers = [];
+  const r = rig({ fs: seeded(), setTimer: (fn) => timers.push(fn) });
+  const store = r.make();
+  const d = await store.load();
+  d.workouts.unshift({ id: 55, name: 'KILLED', exercises: [] });
+  store.save(payload(d)).catch(() => {});
+  assert.equal(mirrorOf(r.fs).hbSeq, 2, 'mirror numbered and written synchronously');
+  assert.equal(idbMeta(r.fake).seq, 1, 'no IndexedDB work in the calling task');
+  assert.equal(r.fake.ctl.commits, 1);
+  const next = await rig({ fs: r.fs, fake: r.fake }).make().load(); // the kill: timers never ran
+  assert.ok(next.workouts.some((w) => w.name === 'KILLED'));
+  assert.ok(idbSnaps(r.fake).some((s) => s.reason === 'pre-reconcile'));
+});
+
+test('restore leaves the store read-only with the load-time bar kind', async () => {
+  const r = rig({ fs: seeded() });
+  const store = r.make();
+  await store.load();
+  await store.restore((await store.snapshots())[0].id);
+  assert.equal(store.status().state, 'readonly');
+  assert.equal(store.status().error, 'unavailable');
+});
+
+test('a transaction that never finishes is reported as failed, not hung', async () => {
+  const r = rig({ fs: seeded(), txTimeoutMs: 30 });
+  const store = r.make();
+  const d = await store.load();
+  r.fake.ctl.stallNext = true;
+  await assert.rejects(store.save(payload(d)));
+  assert.ok(['unknown', 'quota', 'unavailable'].includes(store.status().error));
+});
+
+test('attach as a whole is bounded: a stuck commit falls back to localStorage', async () => {
+  const r = rig({ fs: seeded(), fast: true, attachTimeoutMs: 40 });
+  r.fake.ctl.stallNext = true; // the migration transaction hangs
+  const store = r.make();
+  await store.load();
+  await store.attach();
+  assert.equal(store.status().engine, 'localStorage');
+  assert.equal(store.status().fallback, 'idb-timeout');
+  assert.equal(r.fs.getItem(STORAGE_KEY), V1_TEXT, 'the mirror is untouched');
+});
+
+test('restore never prunes the snapshot it restores from', async () => {
+  const r = rig({ fs: seeded() });
+  const store = r.make();
+  await store.load();
+  for (let i = 0; i < 5; i++) await store.snapshot('pre-restore');
+  const oldest = (await store.snapshots()).find((s) => s.reason === 'pre-restore').id;
+  await store.restore(oldest);
+  const list = await store.snapshots();
+  assert.ok(
+    list.some((s) => s.id === oldest),
+    'still there',
+  );
+  assert.equal(list.filter((s) => s.reason === 'pre-restore').length, 6);
+});
+
+test('sparse workouts arrays store as null, as JSON would', async () => {
+  const fake = createFakeIDB();
+  const e = await createIdbEngine({ factory: fake.factory, timeoutMs: 100 }).open();
+  // eslint-disable-next-line no-sparse-arrays
+  await e.writeDoc({ workouts: [, { id: 1 }, undefined] }, { seq: 1 });
+  assert.deepEqual((await e.readDoc()).doc.workouts, [null, { id: 1 }, null]);
+});
+
+test('invariants hold on the schema 2 store dump fixture', () => {
+  const dump = JSON.parse(readFileSync(join(SYNTHETIC_DIR, 'schema2', 'store_dump.json'), 'utf8'));
+  const { seq, ...doc } = dump; // eslint-disable-line no-unused-vars
+  assert.deepEqual(documentViolations(MIGRATIONS, doc), []);
 });

@@ -86,6 +86,7 @@
     'persistGranted',
     'lastBackupAt',
     'mirrorSig',
+    'mirrorSigSeq',
   ];
 
   const STORAGE_KEY = 'vaultfit_v1';
@@ -207,16 +208,17 @@
   // ---- engine-idb: IndexedDB, behind the same document-level contract --------------------------
   // Database `homebody`, version 1. Stores: workouts (out-of-line keys = array index, so duplicate
   // or missing ids cannot overwrite each other and order is kept), records (the five record sets by
-  // name), meta, snapshots ({id, reason, createdAt, schemaVersion, keep, keepKey, bytes, payload}).
+  // name), meta, snapshots ({id, reason, createdAt, schemaVersion, keep, bytes, payload}).
   // Every write is ONE readwrite transaction: all or nothing. Own tiny promise wrapper; no library.
 
   const STORES = ['workouts', 'records', 'meta', 'snapshots'];
-  const KEEP_LAST = 5; // snapshots kept besides the keep:true one (ADR 0002)
+  const KEEP_LAST = 5; // snapshots kept PER REASON besides the keep:true one (ADR 0002 amended)
 
   function createIdbEngine({
     factory = globalThis.indexedDB,
     name = DB_NAME,
     timeoutMs = 1200, // shorter than the 1.5 s hb-booting failsafe: the engine is chosen before the UI
+    txTimeoutMs = 8000, // a transaction that neither commits nor aborts is reported as failed
     setTimer = (fn, ms) => setTimeout(fn, ms),
     clearTimer = (t) => globalThis.clearTimeout(t),
   } = {}) {
@@ -227,10 +229,18 @@
     let firstResult; // the boot read, handed over once by takeFirst()
 
     const unavailable = (why, cause) => Object.assign(new Error(why), { fallback: why, cause });
+    const closeQuietly = (d) => {
+      try {
+        d.close();
+      } catch {
+        /* already closed */
+      }
+    };
 
     function openDb() {
       return new Promise((resolve, reject) => {
         let r;
+        let settled = false;
         try {
           if (!factory) throw new Error('indexedDB missing');
           r = factory.open(name, 1);
@@ -240,41 +250,38 @@
         }
         r.onupgradeneeded = () => {
           const d = r.result;
-          if (!d.objectStoreNames.contains('workouts')) d.createObjectStore('workouts');
-          if (!d.objectStoreNames.contains('records')) d.createObjectStore('records');
-          if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta');
+          for (const n of ['workouts', 'records', 'meta']) {
+            if (!d.objectStoreNames.contains(n)) d.createObjectStore(n);
+          }
           if (!d.objectStoreNames.contains('snapshots')) {
-            d.createObjectStore('snapshots', { keyPath: 'id', autoIncrement: true }).createIndex(
-              'keep',
-              'keepKey',
-            );
+            d.createObjectStore('snapshots', { keyPath: 'id', autoIncrement: true });
           }
         };
-        r.onblocked = () => reject(unavailable('idb-unavailable'));
-        r.onerror = () => reject(unavailable('idb-unavailable', r.error));
+        r.onblocked = () => {
+          settled = true; // a late success below is closed, never used
+          reject(unavailable('idb-unavailable'));
+        };
+        r.onerror = () => {
+          settled = true;
+          reject(unavailable('idb-unavailable', r.error));
+        };
         r.onsuccess = () => {
           const d = r.result;
-          if (abandoned) {
-            try {
-              d.close(); // a late-opening connection is closed and ignored
-            } catch {
-              /* ignore */
-            }
+          if (abandoned || settled) {
+            closeQuietly(d); // a late-opening connection is closed and ignored
             return;
           }
           if (!STORES.every((s) => d.objectStoreNames.contains(s))) {
-            d.close();
+            closeQuietly(d);
             reject(unavailable('idb-unavailable'));
             return;
           }
-          d.onversionchange = () => {
-            try {
-              d.close(); // let another tab upgrade; reopen lazily on the next use
-            } catch {
-              /* ignore */
-            }
+          const drop = () => {
+            closeQuietly(d); // another tab upgrading, or the browser closed us: reopen lazily
             if (db === d) db = null;
           };
+          d.onversionchange = drop;
+          d.onclose = drop;
           resolve(d);
         };
       });
@@ -292,22 +299,38 @@
 
     /**
      * Run `body(tx, {done, safe})` in one transaction. Resolves with the value passed to done()
-     * when the transaction COMMITS; rejects (with the real cause) when it aborts. An exception in
-     * body or in a callback wrapped by safe() aborts the transaction, so nothing partial persists.
-     * The transaction is created synchronously when the connection is already open.
+     * when the transaction COMMITS; rejects (with the real cause) when it aborts or does not finish
+     * in txTimeoutMs. An exception in body or in a callback wrapped by safe() aborts the
+     * transaction, so nothing partial persists. The transaction is created synchronously when the
+     * connection is already open; a connection the browser closed is reopened once.
      */
-    async function run(mode, stores, body) {
+    async function run(mode, stores, body, retried = false) {
       const d = db ?? (await getDb());
-      return new Promise((resolve, reject) => {
-        let tx;
-        try {
-          tx = d.transaction(stores, mode);
-        } catch (e) {
-          reject(e);
-          return;
+      let tx;
+      try {
+        tx = d.transaction(stores, mode);
+      } catch (e) {
+        if (e && e.name === 'InvalidStateError' && !retried) {
+          if (db === d) db = null;
+          return run(mode, stores, body, true);
         }
+        throw e;
+      }
+      return new Promise((resolve, reject) => {
         let out;
         let thrown = null;
+        let over = false;
+        const timer = setTimer(() => {
+          if (over) return;
+          over = true;
+          reject(Object.assign(new Error('transaction timed out'), { name: 'TimeoutError' }));
+        }, txTimeoutMs);
+        const end = (fn) => () => {
+          clearTimer(timer);
+          if (over) return;
+          over = true;
+          fn();
+        };
         const abort = (e) => {
           thrown = e;
           try {
@@ -316,8 +339,8 @@
             /* already finished */
           }
         };
-        tx.oncomplete = () => resolve(out);
-        tx.onabort = () => reject(thrown || tx.error || new Error('aborted'));
+        tx.oncomplete = end(() => resolve(out));
+        tx.onabort = end(() => reject(thrown || tx.error || new Error('aborted')));
         const safe =
           (fn) =>
           (...a) => {
@@ -360,20 +383,25 @@
       return { doc, raw: null, seq: meta.seq, meta };
     }
 
+    /** Issue the reads of readDoc inside `tx`; `cb` gets the interpreted result. */
+    function readInto(tx, safe, cb) {
+      const w = tx.objectStore('workouts').getAll();
+      const rk = tx.objectStore('records').getAllKeys();
+      const rv = tx.objectStore('records').getAll();
+      const mk = tx.objectStore('meta').getAllKeys();
+      const mv = tx.objectStore('meta').getAll();
+      mv.onsuccess = safe(() =>
+        cb(interpret(w.result, rk.result, rv.result, mk.result, mv.result)),
+      );
+    }
+
     const readDoc = () =>
-      run('readonly', ['workouts', 'records', 'meta'], (tx, { done, safe }) => {
-        const w = tx.objectStore('workouts').getAll();
-        const rk = tx.objectStore('records').getAllKeys();
-        const rv = tx.objectStore('records').getAll();
-        const mk = tx.objectStore('meta').getAllKeys();
-        const mv = tx.objectStore('meta').getAll();
-        mv.onsuccess = safe(() =>
-          done(interpret(w.result, rk.result, rv.result, mk.result, mv.result)),
-        );
-      });
+      run('readonly', ['workouts', 'records', 'meta'], (tx, { done, safe }) =>
+        readInto(tx, safe, done),
+      );
 
     function snapshotRecord(s) {
-      const rec = {
+      return {
         reason: String(s.reason).slice(0, 40),
         createdAt: s.createdAt,
         schemaVersion: s.schemaVersion,
@@ -381,40 +409,50 @@
         bytes: s.payload.length,
         payload: s.payload,
       };
-      if (s.keep) rec.keepKey = 1; // only keep:true records enter the 'keep' index
-      return rec;
     }
 
-    function prune(st, safe) {
-      const all = st.getAllKeys();
+    /** Per reason, keep the newest KEEP_LAST; keep:true and `protectId` are never pruned. */
+    function prune(st, safe, protectId) {
+      const all = st.getAll();
       all.onsuccess = safe(() => {
-        const kept = st.index('keep').getAllKeys();
-        kept.onsuccess = safe(() => {
-          const keep = new Set(kept.result);
-          const rest = all.result.filter((id) => !keep.has(id)); // ascending = oldest first
-          for (const id of rest.slice(0, Math.max(0, rest.length - KEEP_LAST))) st.delete(id);
-        });
+        const byReason = new Map();
+        for (const s of all.result) {
+          if (s.keep || s.id === protectId) continue;
+          if (!byReason.has(s.reason)) byReason.set(s.reason, []);
+          byReason.get(s.reason).push(s.id);
+        }
+        for (const ids of byReason.values()) {
+          ids
+            .sort((a, b) => a - b)
+            .slice(0, Math.max(0, ids.length - KEEP_LAST))
+            .forEach((id) => st.delete(id));
+        }
       });
     }
 
     /**
      * Replace the whole document in one transaction. Options: seq, schema, metaPatch, snapshot
      * ({reason, schemaVersion, keep, payload, createdAt}, added in the same transaction and pruned),
-     * ifUnmigrated (do nothing if meta.schemaVersion already exists: another tab migrated first).
-     * Resolves {skipped}. A DataCloneError or quota failure aborts: the previous state is intact.
+     * ifUnmigrated (do nothing if meta.schemaVersion already exists: another tab migrated first),
+     * expectSeq (if meta.seq is not that, something else committed since we looked: the state being
+     * replaced is first kept as a `pre-overwrite` snapshot in the same transaction; `overwriteAt` is
+     * its timestamp), protectId (a snapshot id the prune must not delete).
+     * Resolves {skipped, overwrote}. A DataCloneError or quota failure aborts: nothing changed.
      */
     function writeDoc(doc, o = {}) {
       return run('readwrite', STORES, (tx, { done, safe }) => {
-        const result = { skipped: false };
+        const result = { skipped: false, overwrote: false };
         done(result);
-        const go = safe(() => {
+        const go = safe((extra) => {
           const wk = tx.objectStore('workouts');
           const rc = tx.objectStore('records');
           const mt = tx.objectStore('meta');
           const sn = tx.objectStore('snapshots');
+          if (extra) sn.add(snapshotRecord(extra));
           if (o.snapshot) sn.add(snapshotRecord(o.snapshot));
           wk.clear();
-          (Array.isArray(doc.workouts) ? doc.workouts : []).forEach((x, i) => wk.put(x, i));
+          const ws = Array.isArray(doc.workouts) ? doc.workouts : [];
+          for (let i = 0; i < ws.length; i++) wk.put(ws[i] ?? null, i); // holes become null, as in JSON
           for (const k of RECORD_KEYS) {
             if (doc[k] !== undefined) rc.put(doc[k], k);
             else rc.delete(k);
@@ -425,15 +463,34 @@
             if (o.metaPatch && o.metaPatch[f] !== undefined && f !== 'schemaVersion' && f !== 'seq')
               mt.put(o.metaPatch[f], f);
           }
-          if (o.snapshot) prune(sn, safe);
+          if (o.snapshot || extra) prune(sn, safe, o.protectId);
         });
         if (o.ifUnmigrated) {
           const g = tx.objectStore('meta').get('schemaVersion');
           g.onsuccess = safe(() => {
             if (g.result !== undefined) result.skipped = true;
-            else go();
+            else go(null);
           });
-        } else go();
+        } else if (o.expectSeq !== undefined) {
+          const g = tx.objectStore('meta').get('seq');
+          g.onsuccess = safe(() => {
+            if (g.result === undefined || g.result === o.expectSeq) return go(null);
+            readInto(tx, safe, (cur) => {
+              result.overwrote = true;
+              go(
+                cur && !cur.corrupt
+                  ? {
+                      reason: 'pre-overwrite',
+                      schemaVersion: cur.doc.schemaVersion,
+                      keep: false,
+                      payload: JSON.stringify(cur.doc),
+                      createdAt: o.overwriteAt ?? 0,
+                    }
+                  : null,
+              );
+            });
+          });
+        } else go(null);
       });
     }
 
@@ -441,11 +498,14 @@
       name: 'indexedDB',
       idb: true,
       supports: Object.freeze({ snapshots: true }),
+      /** True while a connection is open (a save may then hand over its object, see the store). */
+      isOpen: () => !!db,
       /** Open (with the timeout) and do the one boot read. Rejects with {fallback}. */
       open() {
         return (openP ??= new Promise((resolve, reject) => {
           const t = setTimer(() => {
             abandoned = true;
+            eng.close(); // an already-open connection with a stuck first read is closed too
             reject(unavailable('idb-timeout'));
           }, timeoutMs);
           getDb()
@@ -522,11 +582,7 @@
       close() {
         abandoned = true;
         if (db) {
-          try {
-            db.close();
-          } catch {
-            /* ignore */
-          }
+          closeQuietly(db);
           db = null;
         }
       },
@@ -554,9 +610,64 @@
     return 'unknown';
   }
 
+  // ---- boot decision (pure) ----------------------------------------------------------------------
+  // Which copy wins at boot. No I/O: the store reads, calls this, then executes the action.
+  //   stored      engine.readDoc() result (null = fresh database)
+  //   mirrorRaw   the vaultfit_v1 text (or the text the page was rendered from), null if none
+  //   mirrorSeq   its hbSeq, null when unmarked   mirrorSig  sigOf(mirrorRaw) when unmarked
+  //   rendered    the UI already shows the mirror's data (fast boot): IndexedDB winning then means
+  //               the page is stale, which can only be answered by going read-only
+  // Actions: 'readonly' {kind: corrupt|future|stale}, 'empty', 'migrate', 'import-mirror',
+  // 'use-idb' {mirror: 'missing'|'ok'|'stale'}. 'stale' adds rewriteMirror (IndexedDB is newer).
+  function decideBoot({
+    stored,
+    mirrorRaw,
+    mirrorSeq = null,
+    mirrorSig = null,
+    rendered = false,
+    current,
+  }) {
+    if (stored && stored.corrupt) return { action: 'readonly', kind: 'corrupt' };
+    if (stored && stored.doc.schemaVersion > current) return { action: 'readonly', kind: 'future' };
+    if (!stored) return mirrorRaw ? { action: 'migrate' } : { action: 'empty' };
+    if (!mirrorRaw) return { action: 'use-idb', mirror: 'missing' };
+    const idbNewer = rendered
+      ? { action: 'readonly', kind: 'stale', rewriteMirror: true }
+      : { action: 'use-idb', mirror: 'stale', rewriteMirror: true };
+    if (mirrorSeq !== null) {
+      if (mirrorSeq > stored.seq) return { action: 'import-mirror' }; // killed before the commit
+      return mirrorSeq === stored.seq ? { action: 'use-idb', mirror: 'ok' } : idbNewer;
+    }
+    // Unmarked: written by a pre-M1 build or a fallback session (newer), or it is the text that was
+    // migrated and nothing has been committed since (equal), or later commits left it behind.
+    if (mirrorSig !== stored.meta.mirrorSig) return { action: 'import-mirror' };
+    return stored.meta.mirrorSigSeq === stored.seq ? { action: 'use-idb', mirror: 'ok' } : idbNewer;
+  }
+
+  /**
+   * Pure: may a boot skip IndexedDB and read the mirror alone? Only when the mirror is provably
+   * not older than IndexedDB. Marked: its hbSeq equals the idbSeq noted after the last commit.
+   * Unmarked: no commit has ever been noted (any noted commit means the mirror may have missed it).
+   */
+  function canFastBoot({ mirrorSeq, sidecar }) {
+    return mirrorSeq !== null ? sidecar.idbSeq === mirrorSeq : sidecar.idbSeq === undefined;
+  }
+
+  const sameDoc = (a, b) =>
+    JSON.stringify(projectToV1({ workouts: [], ...a })) ===
+    JSON.stringify(projectToV1({ workouts: [], ...b }));
+
+  // ---- store: state machine ------------------------------------------------------------------------
+  // boot: 'kv' (localStorage engine) | 'provisional' (rendered from the mirror, IndexedDB not yet
+  // attached) | 'attached' (IndexedDB) | 'readonly'. canWrite() is the one gate in front of every
+  // engine write; a read-only store can never write, and nothing clears a read-only state.
+
+  const READONLY_BAR = { corrupt: 'corrupt', future: 'future' }; // anything else reuses 'unavailable'
+
   /**
    * @param {{openEngines: Array<() => object|Promise<object>>, migrations?: Array, current?: number,
-   *          retryDelayMs?: number, setTimer?: Function, now?: () => number, nav?: object}} opts
+   *          retryDelayMs?: number, setTimer?: Function, now?: () => number, nav?: object,
+   *          fastBoot?: boolean, attachTimeoutMs?: number}} opts
    *   openEngines: ordered factories; the first that opens and reads wins. When that is the
    *   IndexedDB engine, the first localStorage engine in the list is also opened (the v1 mirror).
    */
@@ -568,40 +679,41 @@
     setTimer = (fn, ms) => setTimeout(fn, ms),
     now = () => 0,
     nav = null, // navigator-like { storage: { persist, persisted } }; never required
-    fastBoot = false, // boot from the mirror when it is provably equal to IndexedDB (see tryFast)
+    fastBoot = false, // boot from the mirror when it is provably not older than IndexedDB
+    attachTimeoutMs = 8000, // attach() as a whole
   }) {
     let engine = null; // where documents are read and written
     let local = null; // the localStorage engine (the v1 mirror when `engine` is IndexedDB)
+    let boot = 'kv';
+    let readOnlyKind = null; // why boot is 'readonly'
     let doc = null; // the loaded document (a plain object), or null before load
     let error = null; // null | { kind }
     let phase = 'idle'; // 'idle' | 'retrying' | 'failed' | 'readonly'
     let meta = {}; // the sidecar / IndexedDB meta, copied field by field
     let asked = false; // persist() requested (this session or an earlier one)
     let persisted = null; // navigator.storage.persisted(), refreshed after boot
-    let readOnly = null; // null | 'corrupt' | 'future' | 'unavailable' | 'restoring' | 'restored'
     let fallback = null; // null | 'idb-unavailable' | 'idb-timeout'
     let mirror = null; // IndexedDB mode only: 'ok' | 'stale'
-    let seq = 0; // last committed (or mirrored) sequence number, IndexedDB mode
+    let seq = 0; // last numbered save, IndexedDB mode
+    let committed = 0; // last seq known committed (expectSeq for the next write)
     let inflight = false;
-    let queued = null; // { text, obj, seq, waiters }
+    let queued = null; // { text, seq, waiters }
     let idle = [];
     const subs = new Set();
-    // Fast boot: `provisional` from the moment the document came from the mirror until attach()
-    // has opened IndexedDB and decided. Saves in that window write the mirror as plain v1 text (as
-    // persistSave always did) and wait for `ready` before their IndexedDB commit.
-    let provisional = false;
     let attachStarted = false;
-    let fastRaw = null; // the mirror text the document was loaded from, kept verbatim
-    let fastSeq = null; // its hbSeq (null = unmarked)
+    let fastRaw = null; // the mirror text the document was rendered from, kept verbatim
     let lastPlain = null; // { text, spliceable } of the newest provisional save, until restamped
     let idbSeqNoted = 0;
+    let scheduled = false;
     let resolveReady;
     const ready = new Promise((r) => (resolveReady = r));
 
-    const idbMode = () => provisional || !!(engine && engine.idb);
+    const idbMode = () => boot === 'provisional' || boot === 'attached';
+    const canWrite = () => boot === 'kv' || boot === 'attached';
     const kinded = (kind) => Object.assign(new Error(kind), { kind });
 
     const publish = (kind, state) => {
+      if (boot === 'readonly' && state !== 'readonly') return; // nothing clears a read-only state
       error = kind ? { kind } : null;
       phase = state || (kind ? 'failed' : 'idle');
       for (const fn of [...subs]) {
@@ -613,14 +725,23 @@
       }
     };
 
+    /** Enter the read-only state: never written again this session. */
+    function lock(kind) {
+      boot = 'readonly';
+      readOnlyKind = kind;
+      publish(READONLY_BAR[kind] || 'unavailable', 'readonly');
+    }
+
     function status() {
       const s = {
-        engine: engine ? engine.name : provisional ? 'indexedDB' : 'none',
+        engine: engine ? engine.name : boot === 'provisional' ? 'indexedDB' : 'none',
+        attached: boot !== 'provisional',
         state: phase,
         persisted,
         persistAsked: asked,
         lastBackupAt: meta.lastBackupAt ?? null,
-        snapshots: !provisional && !!(engine && engine.supports && engine.supports.snapshots),
+        snapshots:
+          boot !== 'provisional' && !!(engine && engine.supports && engine.supports.snapshots),
       };
       if (meta.persistGranted !== undefined) s.persistGranted = meta.persistGranted;
       if (fallback) s.fallback = fallback;
@@ -631,9 +752,50 @@
 
     function failLoad(kind) {
       doc = {};
-      readOnly = kind;
-      publish(kind, 'readonly');
+      lock(kind);
       return doc;
+    }
+
+    // ---- mirror helpers ---------------------------------------------------------------------
+    const readMirror = () => {
+      try {
+        return local ? local.read(STORAGE_KEY) : null;
+      } catch {
+        return null;
+      }
+    };
+
+    /** The sidecar remembers the last IndexedDB commit, so the next boot can prove "not older". */
+    function noteCommitted(n) {
+      if (!local || !(n > idbSeqNoted)) return;
+      idbSeqNoted = n;
+      try {
+        Promise.resolve(local.writeMeta({ idbSeq: n })).catch(() => {});
+      } catch {
+        /* the sidecar is an optimisation */
+      }
+    }
+
+    /** Write the mirror as projectToV1(d) + hbSeq. */
+    function stampMirror(d, n) {
+      if (!local) return;
+      try {
+        local.write(STORAGE_KEY, JSON.stringify({ ...projectToV1(d), hbSeq: n })).then(
+          () => (mirror = 'ok'),
+          () => (mirror = 'stale'),
+        );
+      } catch {
+        mirror = 'stale';
+      }
+    }
+
+    /** The mirror text: the payload's own JSON with hbSeq appended (no second serialisation). */
+    function mirrorText(text, payload, n) {
+      const plain = payload && typeof payload === 'object' && !Array.isArray(payload);
+      if (plain && Object.keys(payload).every((k) => V1_KEYS.includes(k)) && text.startsWith('{')) {
+        return text.length > 2 ? `${text.slice(0, -1)},"hbSeq":${n}}` : `{"hbSeq":${n}}`;
+      }
+      return JSON.stringify({ ...projectToV1(plain ? payload : {}), hbSeq: n });
     }
 
     /** Copy the first legacy key that has data into vaultfit_v1. The legacy key is never removed. */
@@ -657,113 +819,50 @@
       return null;
     }
 
-    // ---- fast boot -----------------------------------------------------------------------------
-    // The simple IndexedDB-first boot costs about +35 ms on the first visible frame (T6a
-    // measurements), so a boot whose mirror is PROVABLY equal to IndexedDB reads only the mirror,
-    // as before M1, and opens IndexedDB after first paint (attach). Provable means: the mirror is
-    // unmarked (it always wins at boot, so IndexedDB cannot be newer), or its hbSeq equals the
-    // idbSeq written to the sidecar after the last IndexedDB commit. Anything else: the slow path.
-    async function tryFast() {
-      const lf = openEngines.find((f) => !f.idb);
-      if (!lf || !openEngines.some((f) => f.idb)) return null;
-      let l;
+    // ---- boot: executing the decision ---------------------------------------------------------
+    /** One transaction: migrate `src`, with a verbatim snapshot, then read back and compare. */
+    async function commitMigration(e, src, side) {
+      const r = runMigrations(migrations, src, { current }); // from the kept text, not live state
+      if (!r.ok) throw new Error(r.reason);
+      let from = 1;
       try {
-        l = await lf();
-        const raw = l.read(STORAGE_KEY);
-        if (!raw) return null;
-        const mseq = hbSeqOf(raw);
-        const side = l.readMeta ? l.readMeta() : {};
-        if (mseq !== null && side.idbSeq !== mseq) return null;
-        const r = runMigrations(migrations, raw, { current });
-        if (!r.ok) return null; // the slow path reports corrupt / newer-than-known
-        delete r.doc.hbSeq;
-        local = l;
-        fastRaw = raw;
-        fastSeq = mseq;
-        seq = mseq ?? side.idbSeq ?? 0;
-        provisional = true;
-        doc = r.doc;
-        return doc;
+        from = JSON.parse(src).schemaVersion ?? 1;
       } catch {
-        return null;
+        /* the runner already parsed it */
       }
+      const res = await e.writeDoc(r.doc, {
+        seq: 1,
+        schema: current,
+        ifUnmigrated: true,
+        metaPatch: {
+          migratedFrom: from,
+          migratedAt: now(),
+          mirrorSig: sigOf(src),
+          mirrorSigSeq: 1,
+          ...side,
+        },
+        snapshot: {
+          reason: 'pre-migration',
+          schemaVersion: from,
+          keep: true,
+          payload: src,
+          createdAt: now(),
+        },
+      });
+      if (res.skipped) return { skipped: true };
+      const back = await e.readDoc();
+      if (!back || back.corrupt || !sameDoc(back.doc, r.doc)) throw new Error('verify');
+      return { doc: r.doc, meta: back.meta };
     }
 
-    /** Open IndexedDB after first paint and decide, using the text the document was loaded from. */
-    async function attach() {
-      if (!provisional || attachStarted) return ready;
-      attachStarted = true;
-      try {
-        const e = await openEngines.find((f) => f.idb)();
-        engine = e;
-        let stored = e.takeFirst();
-        if (stored === undefined) stored = await e.readDoc();
-        await attachDecide(e, stored);
-      } catch (err) {
-        fallback = (err && err.fallback) || fallback || 'idb-unavailable';
-        engine = local; // saves go to the localStorage blob (unmarked); a later boot imports them
-      }
-      provisional = false;
-      resolveReady();
-      return ready;
-    }
-
-    async function attachDecide(e, stored) {
-      if (stored && stored.corrupt) {
-        readOnly = 'corrupt';
-        publish('corrupt', 'readonly');
-        return;
-      }
-      if (stored && stored.doc.schemaVersion > current) {
-        readOnly = 'future';
-        publish('future', 'readonly');
-        return;
-      }
-      const sig = sigOf(fastRaw);
-      if (!stored) {
-        const r = runMigrations(migrations, fastRaw, { current }); // from the kept text, not live state
-        let from = 1;
-        try {
-          from = JSON.parse(fastRaw).schemaVersion ?? 1;
-        } catch {
-          /* keep 1 */
-        }
-        const res = await e.writeDoc(r.doc, {
-          seq: 1,
-          schema: current,
-          ifUnmigrated: true,
-          metaPatch: { migratedFrom: from, migratedAt: now(), mirrorSig: sig, ...meta },
-          snapshot: {
-            reason: 'pre-migration',
-            schemaVersion: from,
-            keep: true,
-            payload: fastRaw,
-            createdAt: now(),
-          },
-        });
-        if (!res.skipped) {
-          const back = await e.readDoc();
-          const same =
-            back &&
-            !back.corrupt &&
-            back.doc.workouts.length === (r.doc.workouts || []).length &&
-            JSON.stringify(projectToV1(back.doc)) === JSON.stringify(projectToV1(r.doc));
-          if (!same) throw new Error('verify');
-          seq = Math.max(seq, 1);
-          return;
-        }
-        stored = await e.readDoc(); // another tab migrated first
-        if (!stored || stored.corrupt) throw new Error('unreadable');
-      }
-      seq = Math.max(seq, stored.seq);
-      const inSync = fastSeq !== null ? stored.seq >= fastSeq : stored.meta.mirrorSig === sig;
-      if (inSync) return;
-      const r = runMigrations(migrations, fastRaw, { current });
-      const next = Math.max(stored.seq, fastSeq ?? 0) + 1;
+    /** One transaction: the mirror text replaces IndexedDB's state, which is snapshotted first. */
+    async function commitImport(e, stored, src, mseq) {
+      const r = runMigrations(migrations, src, { current });
+      if (!r.ok) return null; // a corrupt or newer-than-known mirror is ignored, left as found
+      const next = Math.max(stored.seq, mseq ?? 0) + 1;
       await e.writeDoc(r.doc, {
         seq: next,
         schema: current,
-        metaPatch: { mirrorSig: sig },
         snapshot: {
           reason: 'pre-reconcile',
           schemaVersion: stored.doc.schemaVersion,
@@ -772,7 +871,136 @@
           createdAt: now(),
         },
       });
-      seq = next;
+      return { doc: r.doc, seq: next };
+    }
+
+    /**
+     * Decide and execute. `raw` is the mirror text (or what the page was rendered from). Returns
+     * the document the session runs on. Throws if an IndexedDB write failed (caller falls back).
+     */
+    async function resolveBoot(e, stored, raw, rendered) {
+      for (let pass = 0; pass < 2; pass++) {
+        const mseq = hbSeqOf(raw);
+        const d = decideBoot({
+          stored,
+          mirrorRaw: raw,
+          mirrorSeq: mseq,
+          mirrorSig: raw && mseq === null ? sigOf(raw) : null,
+          rendered,
+          current,
+        });
+        if (stored) {
+          meta = { ...stored.meta };
+          asked = meta.persistAskedAt !== undefined;
+          seq = Math.max(seq, stored.seq);
+          committed = stored.seq;
+        }
+        switch (d.action) {
+          case 'readonly':
+            lock(d.kind);
+            if (d.rewriteMirror && !lastPlain) stampMirror(stored.doc, stored.seq);
+            return d.kind === 'stale' ? doc : {};
+          case 'empty':
+            meta = { ...(local ? local.readMeta() : {}) };
+            asked = meta.persistAskedAt !== undefined;
+            return {};
+          case 'migrate': {
+            const m = await commitMigration(e, raw, local ? local.readMeta() : {});
+            if (m.skipped) {
+              stored = await e.readDoc(); // another tab migrated first: just read
+              continue;
+            }
+            seq = committed = 1;
+            meta = { ...m.meta };
+            asked = meta.persistAskedAt !== undefined;
+            return m.doc; // vaultfit_v1 is left exactly as found, recognised by mirrorSig
+          }
+          case 'import-mirror': {
+            const m = await commitImport(e, stored, raw, mseq);
+            if (!m) return stored.doc;
+            seq = committed = m.seq;
+            stampMirror(m.doc, m.seq);
+            noteCommitted(m.seq);
+            return m.doc;
+          }
+          default: // 'use-idb'
+            if (d.mirror === 'stale') mirror = 'stale';
+            if (d.rewriteMirror && !lastPlain) stampMirror(stored.doc, stored.seq);
+            if (d.mirror === 'ok' && mseq !== null) noteCommitted(stored.seq);
+            return stored.doc;
+        }
+      }
+      throw new Error('unreadable');
+    }
+
+    /** IndexedDB could not take the work: run this session on localStorage (data stays in memory). */
+    function fallBackWith(d, why, adoptFailed) {
+      fallback = fallback || why || 'idb-unavailable';
+      engine = local;
+      boot = local ? 'kv' : 'readonly';
+      if (d) doc = d;
+      if (adoptFailed) publish(adoptFailed);
+      return doc;
+    }
+
+    // Fast boot: the simple IndexedDB-first boot costs about +35 ms on the first visible frame (T6a
+    // measurements), so a boot whose mirror is provably not older than IndexedDB reads only the
+    // mirror, as before M1, and opens IndexedDB after first paint (attach). See canFastBoot.
+    async function tryFast() {
+      const lf = openEngines.find((f) => !f.idb);
+      if (!lf || !openEngines.some((f) => f.idb)) return null;
+      try {
+        const l = await lf();
+        const raw = l.read(STORAGE_KEY);
+        if (!raw) return null;
+        const mseq = hbSeqOf(raw);
+        const side = l.readMeta ? l.readMeta() : {};
+        if (!canFastBoot({ mirrorSeq: mseq, sidecar: side })) return null;
+        const r = runMigrations(migrations, raw, { current });
+        if (!r.ok) return null; // the slow path reports corrupt / newer-than-known
+        delete r.doc.hbSeq;
+        local = l;
+        fastRaw = raw;
+        seq = mseq ?? side.idbSeq ?? 0;
+        boot = 'provisional';
+        doc = r.doc;
+        return doc;
+      } catch {
+        return null;
+      }
+    }
+
+    /** Open IndexedDB after first paint and decide, using the text the document was rendered from. */
+    async function attach() {
+      if (boot !== 'provisional' || attachStarted) return ready;
+      attachStarted = true;
+      let timedOut = false;
+      const work = (async () => {
+        const e = await openEngines.find((f) => f.idb)();
+        let stored = e.takeFirst();
+        if (stored === undefined) stored = await e.readDoc();
+        engine = e;
+        await resolveBoot(e, stored, fastRaw, true);
+        if (boot === 'provisional') boot = 'attached';
+      })();
+      const guard = new Promise((res) =>
+        setTimer(() => {
+          timedOut = true;
+          res();
+        }, attachTimeoutMs),
+      );
+      try {
+        await Promise.race([work, guard]);
+        if (timedOut)
+          throw Object.assign(new Error('attach timed out'), { fallback: 'idb-timeout' });
+      } catch (err) {
+        work.catch(() => {});
+        if (engine && engine.close) engine.close();
+        // saves go to the localStorage blob (plain text, unmarked); a later boot imports them
+        fallBackWith(null, (err && err.fallback) || 'idb-unavailable');
+      }
+      resolveReady();
+      return ready;
     }
 
     async function load() {
@@ -796,19 +1024,36 @@
       engine = primary;
       if (!engine) {
         doc = {};
-        readOnly = 'unavailable';
+        boot = 'readonly';
+        readOnlyKind = 'unavailable';
         publish('unavailable', 'readonly');
         return doc;
       }
       if (engine.idb) {
+        boot = 'attached';
+        let raw = readMirror();
+        let adoptFailed = null;
         try {
-          return await loadIdb();
-        } catch (e) {
-          // The IndexedDB read failed after it opened: use localStorage for this session.
+          let stored = engine.takeFirst();
+          if (stored === undefined) stored = await engine.readDoc();
+          if (!stored && !raw && local) {
+            const a = await adoptLegacy(local);
+            if (a) {
+              raw = a.raw;
+              adoptFailed = a.failed;
+            }
+          }
+          doc = await resolveBoot(engine, stored, raw, false);
+          if (adoptFailed) publish(adoptFailed);
+          return doc;
+        } catch {
+          // IndexedDB failed after it opened: the mirror text (if any) runs this session
           if (!local) return failLoad('unavailable');
-          fallback = fallback || 'idb-unavailable';
-          engine = local;
-          void e;
+          let d = null;
+          const r = raw ? runMigrations(migrations, raw, { current }) : null;
+          if (r && r.ok) d = r.doc;
+          if (r && !r.ok) return failLoad(r.reason);
+          return fallBackWith(d || {}, 'idb-unavailable', adoptFailed);
         }
       }
       return loadKv();
@@ -842,171 +1087,9 @@
       return doc;
     }
 
-    // ---- IndexedDB boot: which copy wins -----------------------------------------------------
-    // IndexedDB holds the truth; vaultfit_v1 is a mirror stamped with hbSeq (the seq of the last
-    // save). A mirror WITHOUT hbSeq (a pre-M1 build or a localStorage-fallback session wrote it) or
-    // with hbSeq ABOVE meta.seq (killed after the sync mirror write, before the IndexedDB commit)
-    // is newer: snapshot IndexedDB first (pre-reconcile), then import the mirror. A mirror at or
-    // below meta.seq is stale and ignored (rewritten on the next save).
-    const sidecar = () => (local ? local.readMeta() : {});
-
-    /** The sidecar remembers the last IndexedDB commit, so the next boot can prove "equal". */
-    function noteCommitted(n) {
-      if (!local || !(n > idbSeqNoted)) return;
-      idbSeqNoted = n;
-      try {
-        Promise.resolve(local.writeMeta({ idbSeq: n })).catch(() => {});
-      } catch {
-        /* the sidecar is an optimisation */
-      }
-    }
-
-    function stampMirror(d) {
-      if (!local) return;
-      try {
-        const p = local.write(STORAGE_KEY, JSON.stringify({ ...projectToV1(d), hbSeq: seq }));
-        p.then(
-          () => (mirror = 'ok'),
-          () => (mirror = 'stale'),
-        );
-      } catch {
-        mirror = 'stale';
-      }
-    }
-
-    async function loadIdb() {
-      let stored = engine.takeFirst();
-      if (stored === undefined) stored = await engine.readDoc();
-      const readMirror = () => {
-        try {
-          return local ? local.read(STORAGE_KEY) : null;
-        } catch {
-          return null;
-        }
-      };
-      const raw = readMirror();
-      for (let pass = 0; pass < 2; pass++) {
-        if (stored && stored.corrupt) return failLoad('corrupt');
-        if (stored && stored.doc.schemaVersion > current) return failLoad('future');
-
-        if (!stored) {
-          // First boot on this database: migrate the stored text (mirror, else a legacy key) in
-          // ONE transaction together with a verbatim snapshot of it. The source stays untouched.
-          let src = raw;
-          let adoptFailed = null;
-          if (!src && local) {
-            const a = await adoptLegacy(local);
-            if (a) {
-              src = a.raw;
-              adoptFailed = a.failed;
-            }
-          }
-          const side = sidecar();
-          if (!src) {
-            doc = {};
-            meta = { ...side };
-            asked = meta.persistAskedAt !== undefined;
-            return doc;
-          }
-          const r = runMigrations(migrations, src, { current });
-          if (!r.ok) return failLoad(r.reason);
-          let from = 1;
-          try {
-            from = JSON.parse(src).schemaVersion ?? 1;
-          } catch {
-            /* the runner already parsed it; keep 1 */
-          }
-          let res;
-          try {
-            res = await engine.writeDoc(r.doc, {
-              seq: 1,
-              schema: current,
-              ifUnmigrated: true,
-              metaPatch: { migratedFrom: from, migratedAt: now(), mirrorSig: sigOf(src), ...side },
-              snapshot: {
-                reason: 'pre-migration',
-                schemaVersion: from,
-                keep: true,
-                payload: src,
-                createdAt: now(),
-              },
-            });
-          } catch {
-            return fallBackWith(r.doc, adoptFailed); // nothing committed; the source reruns next boot
-          }
-          if (res.skipped) {
-            stored = await engine.readDoc(); // another tab migrated first: just read
-            continue;
-          }
-          const back = await engine.readDoc();
-          const same =
-            back &&
-            !back.corrupt &&
-            back.doc.workouts.length === (r.doc.workouts || []).length &&
-            JSON.stringify(projectToV1(back.doc)) === JSON.stringify(projectToV1(r.doc));
-          if (!same) return fallBackWith(r.doc, adoptFailed);
-          seq = 1;
-          meta = { ...back.meta };
-          asked = meta.persistAskedAt !== undefined;
-          doc = r.doc; // vaultfit_v1 is left exactly as found: unmarked, and equal by mirrorSig
-          if (adoptFailed) publish(adoptFailed);
-          return doc;
-        }
-
-        seq = stored.seq;
-        meta = { ...stored.meta };
-        asked = meta.persistAskedAt !== undefined;
-        doc = stored.doc;
-        const mseq = hbSeqOf(raw);
-        const sig = raw && mseq === null ? sigOf(raw) : null;
-        if (raw && (mseq === null ? stored.meta.mirrorSig !== sig : mseq > seq)) {
-          const r = runMigrations(migrations, raw, { current });
-          if (r.ok) {
-            const next = Math.max(seq, mseq ?? 0) + 1;
-            try {
-              await engine.writeDoc(r.doc, {
-                seq: next,
-                schema: current,
-                metaPatch: { mirrorSig: sig ?? undefined },
-                snapshot: {
-                  reason: 'pre-reconcile',
-                  schemaVersion: stored.doc.schemaVersion,
-                  keep: false,
-                  payload: JSON.stringify(stored.doc),
-                  createdAt: now(),
-                },
-              });
-              seq = next;
-              if (mseq !== null) stampMirror(r.doc);
-            } catch (e) {
-              seq = Math.max(seq, mseq ?? 0); // newer data lives in memory; the next save writes it
-              publish(classifyError(e));
-            }
-            doc = r.doc;
-          }
-          // a corrupt or newer-than-known mirror is ignored: IndexedDB stays authoritative
-        } else if (raw && mseq !== null && mseq < seq) {
-          mirror = 'stale';
-        } else if (raw && mseq !== null && mseq === seq) {
-          noteCommitted(seq); // both copies equal: let the next boot take the fast path
-        }
-        return doc;
-      }
-      return failLoad('unavailable');
-    }
-
-    /** IndexedDB could not take the migration: run this session on localStorage, in memory first. */
-    function fallBackWith(d, adoptFailed) {
-      fallback = fallback || 'idb-unavailable';
-      engine = local;
-      doc = d;
-      if (adoptFailed) publish(adoptFailed);
-      return doc;
-    }
-
     // Called once the document is loaded. Nothing here is awaited on the boot path.
     function afterLoad() {
-      if (!idbMode() || provisional) {
+      if (!idbMode() || boot === 'provisional') {
         const src = engine || local;
         const m = src && src.readMeta ? src.readMeta() : {};
         Object.assign(meta, m);
@@ -1076,20 +1159,26 @@
 
     // ---- saving: one writer at a time, latest payload wins, retry once -------------------------
     function writeOnce(job) {
-      if (provisional) {
-        job.obj = null; // the text taken at call time is the truth once we wait
+      if (boot === 'provisional') {
         return ready.then(() => writeOnce(job));
       }
+      if (!canWrite()) return Promise.reject(kinded(readOnlyKind || 'unavailable')); // the one gate
       if (idbMode()) {
         if (!job.seq) {
           job.seq = ++seq; // a fast-boot save: numbered now that the engine is known
           job.restamp = true;
         }
         try {
-          // job.obj is only set when pump runs inside the save() call (structured clone happens
-          // at put, so later mutation cannot leak in); otherwise the text taken at call time.
-          const d = job.obj || JSON.parse(job.text);
-          return Promise.resolve(engine.writeDoc(d, { seq: job.seq, schema: current }));
+          // Always from the text taken at call time: the write runs in a later task (see save()),
+          // so later mutation of the caller's object cannot leak in.
+          return Promise.resolve(
+            engine.writeDoc(JSON.parse(job.text), {
+              seq: job.seq,
+              schema: current,
+              expectSeq: committed,
+              overwriteAt: now(),
+            }),
+          );
         } catch (e) {
           return Promise.reject(e);
         }
@@ -1103,17 +1192,36 @@
       }
     }
 
+    /** After the commit of a fast-boot save: give the (plain) mirror its hbSeq. */
+    function restampMirror(job) {
+      if (!local || !lastPlain || lastPlain.text !== job.text) return;
+      const t = lastPlain;
+      lastPlain = null;
+      try {
+        const body = t.spliceable
+          ? mirrorText(t.text, { workouts: 1 }, job.seq)
+          : JSON.stringify({ ...projectToV1(JSON.parse(t.text)), hbSeq: job.seq });
+        local.write(STORAGE_KEY, body).then(
+          () => (mirror = 'ok'),
+          () => (mirror = 'stale'),
+        );
+      } catch {
+        mirror = 'stale';
+      }
+    }
+
     function pump() {
       inflight = true;
       const job = queued;
       queued = null;
       const finish = (kind) => {
-        for (const w of job.waiters)
-          kind ? w.rej(Object.assign(new Error(kind), { kind })) : w.res();
+        const refused = !kind ? null : boot === 'readonly' ? readOnlyKind : kind;
+        for (const w of job.waiters) refused ? w.rej(kinded(refused)) : w.res();
         inflight = false;
         publish(kind);
         if (!kind && idbMode() && job.seq) {
           if (job.restamp) restampMirror(job);
+          committed = job.seq;
           noteCommitted(job.seq);
         }
         if (!kind && job.has && !asked) askPersist();
@@ -1135,6 +1243,7 @@
       first.then(
         () => finish(null),
         (e) => {
+          if (boot === 'readonly') return finish(readOnlyKind); // refused, not retried
           announce(e);
           // retry once, with the newest payload if one arrived meanwhile
           setTimer(() => {
@@ -1145,50 +1254,18 @@
               job.waiters.push(...queued.waiters);
               queued = null;
             }
-            job.obj = null;
             writeOnce(job).then(
               () => finish(null),
-              (e2) => finish(classifyError(e2)),
+              (e2) => finish(boot === 'readonly' ? readOnlyKind : classifyError(e2)),
             );
           }, retryDelayMs);
         },
       );
     }
 
-    /** After the commit of a fast-boot save: give the (plain) mirror its hbSeq. */
-    function restampMirror(job) {
-      if (!local || !lastPlain || lastPlain.text !== job.text) return;
-      const t = lastPlain;
-      lastPlain = null;
-      try {
-        const body = t.spliceable
-          ? mirrorText(t.text, { workouts: 1 }, job.seq)
-          : JSON.stringify({ ...projectToV1(JSON.parse(t.text)), hbSeq: job.seq });
-        const p = local.write(STORAGE_KEY, body);
-        p.then(
-          () => (mirror = 'ok'),
-          () => (mirror = 'stale'),
-        );
-      } catch {
-        mirror = 'stale';
-      }
-    }
-
-    /** The mirror text: the payload's own JSON with hbSeq appended (no second serialisation). */
-    function mirrorText(text, payload, n) {
-      const plain = payload && typeof payload === 'object' && !Array.isArray(payload);
-      if (plain && Object.keys(payload).every((k) => V1_KEYS.includes(k))) {
-        return text.length > 2 ? `${text.slice(0, -1)},"hbSeq":${n}}` : `{"hbSeq":${n}}`;
-      }
-      return JSON.stringify({ ...projectToV1(plain ? payload : {}), hbSeq: n });
-    }
-
     /** Stringifies NOW (later mutation cannot leak in). Resolves on success; rejects once published. */
     function save(payload) {
-      if (readOnly) {
-        const kind = readOnly;
-        return Promise.reject(Object.assign(new Error(kind), { kind }));
-      }
+      if (boot === 'readonly') return Promise.reject(kinded(readOnlyKind));
       let text;
       try {
         text = JSON.stringify(payload);
@@ -1196,7 +1273,7 @@
         // A payload that cannot be serialised (for example a circular reference) is a failed save,
         // published like any other, never an exception thrown into the caller.
         publish('unknown', 'failed');
-        return Promise.reject(Object.assign(new Error('unknown'), { kind: 'unknown' }));
+        return Promise.reject(kinded('unknown'));
       }
       const has = !!payload && Array.isArray(payload.workouts) && payload.workouts.length > 0;
       let n = 0;
@@ -1204,6 +1281,7 @@
         // Rollback copy first, synchronously (a tap followed by an OS kill still persists). A
         // failure here is logged, never surfaced; status().mirror says 'stale'. While IndexedDB is
         // not attached yet the mirror is written as plain v1 text (unmarked = newer at next boot).
+        const provisional = boot === 'provisional';
         if (provisional) {
           lastPlain = {
             text,
@@ -1230,12 +1308,22 @@
           queued.text = text;
           queued.has = has;
           queued.seq = n;
-          queued.obj = null;
           queued.waiters.push(w);
         } else {
-          queued = { text, has, seq: n, obj: inflight ? null : payload, waiters: [w] };
+          queued = { text, has, seq: n, waiters: [w] };
         }
-        if (!inflight) pump();
+        if (inflight) return;
+        if (!idbMode() || boot === 'provisional') return pump(); // localStorage: synchronous, as before
+        // IndexedDB: the mirror above is already written synchronously; the clone and the
+        // transaction run in the next task so a tap, Finish or edit does not pay for them. A kill
+        // before it runs leaves the mirror's hbSeq ahead of meta.seq, which the boot rule imports.
+        if (!scheduled) {
+          scheduled = true;
+          setTimer(() => {
+            scheduled = false;
+            if (!inflight && queued) pump();
+          }, 0);
+        }
       });
     }
 
@@ -1251,7 +1339,7 @@
     async function usable() {
       await ready;
       if (!engine || !engine.idb) throw kinded('unsupported');
-      if (readOnly) throw kinded(readOnly);
+      if (boot === 'readonly') throw kinded(readOnlyKind);
     }
 
     /** Snapshot what is stored now (for T7's pre-import call). Resolves the new snapshot id. */
@@ -1290,7 +1378,8 @@
         /* unreadable: treated as none */
       }
       if (active) throw kinded('workout-active');
-      readOnly = 'restoring'; // saves are refused while it runs
+      boot = 'readonly'; // saves are refused while it runs
+      readOnlyKind = 'restoring';
       try {
         await settled();
         const snap = await engine.getSnapshot(id);
@@ -1302,6 +1391,7 @@
         await engine.writeDoc(r.doc, {
           seq: next,
           schema: current,
+          protectId: id,
           snapshot:
             cur && !cur.corrupt
               ? {
@@ -1313,21 +1403,24 @@
                 }
               : undefined,
         });
-        seq = next;
-        stampMirror(r.doc);
+        seq = committed = next;
+        stampMirror(r.doc, next);
         noteCommitted(next);
-        readOnly = 'restored';
+        lock('restored'); // read-only until reload; the bar says to reopen
         return { restored: id };
       } catch (e) {
-        if (readOnly === 'restoring') readOnly = null;
+        if (readOnlyKind === 'restoring') {
+          boot = 'attached';
+          readOnlyKind = null;
+        }
         throw e;
       }
     }
 
     async function loadAll() {
       const d = await load();
-      if (engine || provisional) afterLoad();
-      if (!provisional) resolveReady();
+      if (engine || boot === 'provisional') afterLoad();
+      if (boot !== 'provisional') resolveReady();
       return d;
     }
 
@@ -1352,6 +1445,10 @@
     LATEST_SCHEMA,
     MIGRATIONS,
     projectToV1,
+    decideBoot,
+    canFastBoot,
+    sigOf,
+    hbSeqOf,
     createLocalEngine,
     createIdbEngine,
     createStore,

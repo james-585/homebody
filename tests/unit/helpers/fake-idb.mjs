@@ -16,6 +16,7 @@ export function createFakeIDB() {
     blockedOpen: false, // open() fires onblocked
     failTransaction: null, // Error thrown by db.transaction()
     abortAfterOps: null, // number: the next readwrite transaction aborts (quota) after that many requests
+    stallNext: false, // the next readwrite transaction never completes
     abortNext: null, // Error: the next readwrite transaction aborts with it before writing
     handles: [], // every connection ever opened (for versionchange / counting)
     commits: 0, // readwrite transactions that committed
@@ -147,6 +148,10 @@ export function createFakeIDB() {
         new Promise((resolve) => {
           release = resolve;
           if (finished) return resolve(); // aborted before it began
+          if (mode === 'readwrite' && ctl.stallNext) {
+            ctl.stallNext = false;
+            return; // holds the database lock forever, like a hung transaction
+          }
           backup = new Map(
             names.map((n) => [
               n,

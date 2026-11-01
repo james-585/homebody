@@ -7431,6 +7431,7 @@ if (screen.orientation && screen.orientation.lock) {
   function becameSaved() { S.main = null; S.phase = 'failed'; if (!(S.wm && wmOpen())) { S.wm = false; S.ok = true; say(COPY.saved[0] + '. ' + COPY.saved[1]); } }
 
   function onStore(st) {
+    if (st.state === 'readonly' && !S.load) { S.load = st.error; S.rawHas = undefined; S.main = null; render(); return; } // read-only after attach (T6): same load-time bar
     if (userRetry || S.load) return;
     if (st.state === 'retrying' || st.state === 'failed') {
       S.ok = false; S.main = st.error || 'unknown'; S.phase = st.state === 'retrying' ? 'retrying' : 'failed';
