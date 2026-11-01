@@ -16,6 +16,7 @@ export function createFakeIDB() {
     blockedOpen: false, // open() fires onblocked
     failTransaction: null, // Error thrown by db.transaction()
     abortAfterOps: null, // number: the next readwrite transaction aborts (quota) after that many requests
+    delayCommit: 0, // ms: the next readwrite transaction commits but reports completion this late
     stallNext: false, // the next readwrite transaction never completes
     abortNext: null, // Error: the next readwrite transaction aborts with it before writing
     handles: [], // every connection ever opened (for versionchange / counting)
@@ -56,7 +57,15 @@ export function createFakeIDB() {
         }
         ops.length = 0;
       } else if (mode === 'readwrite') ctl.commits++;
-      micro(() => (aborted ? tx.onabort : tx.oncomplete)?.());
+      const fire = () => (aborted ? tx.onabort : tx.oncomplete)?.();
+      if (!aborted && mode === 'readwrite' && ctl.delayCommit) {
+        // applied now, but the completion event (and the lock) arrive late: a slow device
+        const d = ctl.delayCommit;
+        ctl.delayCommit = 0;
+        setTimeout(() => (fire(), release?.()), d);
+        return;
+      }
+      micro(fire);
       release?.(); // not yet begun (aborted straight after creation): the chain releases it
     };
     tx.abort = () => {
@@ -128,6 +137,7 @@ export function createFakeIDB() {
         get: (k) => add(() => (st.rows.has(k) ? structuredClone(st.rows.get(k)) : undefined)),
         getAll: () => add(() => sorted(st).map(([, v]) => structuredClone(v))),
         getAllKeys: () => add(() => sorted(st).map(([k]) => k)),
+        count: () => add(() => st.rows.size),
         index: (iname) => ({
           getAllKeys: () =>
             add(() => {

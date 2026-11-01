@@ -87,6 +87,7 @@
     'lastBackupAt',
     'mirrorSig',
     'mirrorSigSeq',
+    'writer',
   ];
 
   const STORAGE_KEY = 'vaultfit_v1';
@@ -213,6 +214,17 @@
 
   const STORES = ['workouts', 'records', 'meta', 'snapshots'];
   const KEEP_LAST = 5; // snapshots kept PER REASON besides the keep:true one (ADR 0002 amended)
+  // Stored reasons are a closed set (a caller-supplied string is never stored as is). pre-reconcile
+  // snapshots are never pruned until T8 ships a visible restore (K33).
+  const SNAPSHOT_REASONS = [
+    'pre-migration',
+    'pre-reconcile',
+    'pre-restore',
+    'pre-overwrite',
+    'pre-import',
+    'manual',
+  ];
+  const UNPRUNED_REASONS = ['pre-reconcile'];
 
   function createIdbEngine({
     factory = globalThis.indexedDB,
@@ -402,7 +414,7 @@
 
     function snapshotRecord(s) {
       return {
-        reason: String(s.reason).slice(0, 40),
+        reason: SNAPSHOT_REASONS.includes(s.reason) ? s.reason : 'manual',
         createdAt: s.createdAt,
         schemaVersion: s.schemaVersion,
         keep: !!s.keep,
@@ -417,7 +429,7 @@
       all.onsuccess = safe(() => {
         const byReason = new Map();
         for (const s of all.result) {
-          if (s.keep || s.id === protectId) continue;
+          if (s.keep || s.id === protectId || UNPRUNED_REASONS.includes(s.reason)) continue;
           if (!byReason.has(s.reason)) byReason.set(s.reason, []);
           byReason.get(s.reason).push(s.id);
         }
@@ -441,9 +453,13 @@
      */
     function writeDoc(doc, o = {}) {
       return run('readwrite', STORES, (tx, { done, safe }) => {
-        const result = { skipped: false, overwrote: false };
+        const result = { skipped: false, overwrote: false, seq: o.seq ?? 0 };
         done(result);
-        const go = safe((extra) => {
+        const target = o.schema ?? doc.schemaVersion ?? LATEST_SCHEMA;
+        const refuse = (kind) => {
+          throw Object.assign(new Error(kind), { kind });
+        };
+        const go = safe((extra, replacedSeq) => {
           const wk = tx.objectStore('workouts');
           const rc = tx.objectStore('records');
           const mt = tx.objectStore('meta');
@@ -457,24 +473,43 @@
             if (doc[k] !== undefined) rc.put(doc[k], k);
             else rc.delete(k);
           }
-          mt.put(o.schema ?? doc.schemaVersion ?? LATEST_SCHEMA, 'schemaVersion');
-          mt.put(o.seq ?? 0, 'seq');
+          // never let this tab's counter fall behind what it replaced
+          result.seq = Math.max(o.seq ?? 0, replacedSeq === undefined ? 0 : replacedSeq + 1);
+          mt.put(target, 'schemaVersion');
+          mt.put(result.seq, 'seq');
+          if (o.writer !== undefined) mt.put(o.writer, 'writer');
           for (const f of META_FIELDS) {
             if (o.metaPatch && o.metaPatch[f] !== undefined && f !== 'schemaVersion' && f !== 'seq')
               mt.put(o.metaPatch[f], f);
           }
           if (o.snapshot || extra) prune(sn, safe, o.protectId);
         });
-        if (o.ifUnmigrated) {
-          const g = tx.objectStore('meta').get('schemaVersion');
-          g.onsuccess = safe(() => {
-            if (g.result !== undefined) result.skipped = true;
+        // Preflight inside the transaction: never replace corrupt data or a newer schema, whatever
+        // this tab believed when it started. Then, unless a migration claims a fresh database,
+        // check meta.seq (expectSeq) and keep what is replaced if somebody else committed.
+        const sv = tx.objectStore('meta').get('schemaVersion');
+        const sq = tx.objectStore('meta').get('seq');
+        const wr = tx.objectStore('meta').get('writer');
+        const wc = tx.objectStore('workouts').count();
+        wc.onsuccess = safe(() => {
+          const v = sv.result;
+          if (v === undefined) {
+            if (wc.result > 0) refuse('corrupt'); // data without meta
+          } else if (!Number.isInteger(v) || v < 1 || typeof sq.result !== 'number') {
+            refuse('corrupt');
+          } else if (v > target) refuse('future');
+          if (o.ifUnmigrated) {
+            if (v !== undefined) result.skipped = true;
             else go(null);
-          });
-        } else if (o.expectSeq !== undefined) {
-          const g = tx.objectStore('meta').get('seq');
-          g.onsuccess = safe(() => {
-            if (g.result === undefined || g.result === o.expectSeq) return go(null);
+          } else if (
+            o.expectSeq === undefined ||
+            sq.result === undefined ||
+            sq.result === o.expectSeq ||
+            (o.writer !== undefined && sq.result === o.seq && wr.result === o.writer) // our own earlier attempt that finished after its timeout
+          ) {
+            go(null);
+          } else {
+            const replaced = sq.result;
             readInto(tx, safe, (cur) => {
               result.overwrote = true;
               go(
@@ -487,10 +522,11 @@
                       createdAt: o.overwriteAt ?? 0,
                     }
                   : null,
+                replaced,
               );
             });
-          });
-        } else go(null);
+          }
+        });
       });
     }
 
@@ -677,6 +713,7 @@
     current = CURRENT_SCHEMA,
     retryDelayMs = 250,
     setTimer = (fn, ms) => setTimeout(fn, ms),
+    clearTimer = (t) => globalThis.clearTimeout(t),
     now = () => 0,
     nav = null, // navigator-like { storage: { persist, persisted } }; never required
     fastBoot = false, // boot from the mirror when it is provably not older than IndexedDB
@@ -705,9 +742,12 @@
     let lastPlain = null; // { text, spliceable } of the newest provisional save, until restamped
     let idbSeqNoted = 0;
     let scheduled = false;
+    const writer = Math.random().toString(36).slice(2, 10); // per session, only tells our own retry from another tab's commit
     let resolveReady;
     const ready = new Promise((r) => (resolveReady = r));
 
+    // The mirror and sidecar are only maintained by an IndexedDB session (or a restore in progress).
+    const mirrorLive = () => idbMode() || readOnlyKind === 'restoring';
     const idbMode = () => boot === 'provisional' || boot === 'attached';
     const canWrite = () => boot === 'kv' || boot === 'attached';
     const kinded = (kind) => Object.assign(new Error(kind), { kind });
@@ -767,7 +807,7 @@
 
     /** The sidecar remembers the last IndexedDB commit, so the next boot can prove "not older". */
     function noteCommitted(n) {
-      if (!local || !(n > idbSeqNoted)) return;
+      if (!local || !mirrorLive() || !(n > idbSeqNoted)) return;
       idbSeqNoted = n;
       try {
         Promise.resolve(local.writeMeta({ idbSeq: n })).catch(() => {});
@@ -778,7 +818,7 @@
 
     /** Write the mirror as projectToV1(d) + hbSeq. */
     function stampMirror(d, n) {
-      if (!local) return;
+      if (!local || !mirrorLive()) return; // work that outlived its session must not touch the mirror
       try {
         local.write(STORAGE_KEY, JSON.stringify({ ...projectToV1(d), hbSeq: n })).then(
           () => (mirror = 'ok'),
@@ -860,9 +900,11 @@
       const r = runMigrations(migrations, src, { current });
       if (!r.ok) return null; // a corrupt or newer-than-known mirror is ignored, left as found
       const next = Math.max(stored.seq, mseq ?? 0) + 1;
-      await e.writeDoc(r.doc, {
+      const res = await e.writeDoc(r.doc, {
         seq: next,
         schema: current,
+        expectSeq: stored.seq,
+        overwriteAt: now(),
         snapshot: {
           reason: 'pre-reconcile',
           schemaVersion: stored.doc.schemaVersion,
@@ -871,14 +913,17 @@
           createdAt: now(),
         },
       });
-      return { doc: r.doc, seq: next };
+      return { doc: r.doc, seq: res.seq };
     }
 
     /**
      * Decide and execute. `raw` is the mirror text (or what the page was rendered from). Returns
      * the document the session runs on. Throws if an IndexedDB write failed (caller falls back).
      */
-    async function resolveBoot(e, stored, raw, rendered) {
+    async function resolveBoot(e, stored, raw, rendered, live = () => true) {
+      const check = () => {
+        if (!live()) throw Object.assign(new Error('cancelled'), { cancelled: true });
+      };
       for (let pass = 0; pass < 2; pass++) {
         const mseq = hbSeqOf(raw);
         const d = decideBoot({
@@ -889,6 +934,7 @@
           rendered,
           current,
         });
+        check();
         if (stored) {
           meta = { ...stored.meta };
           asked = meta.persistAskedAt !== undefined;
@@ -897,8 +943,8 @@
         }
         switch (d.action) {
           case 'readonly':
+            if (d.rewriteMirror && !lastPlain) stampMirror(stored.doc, stored.seq); // before lock()
             lock(d.kind);
-            if (d.rewriteMirror && !lastPlain) stampMirror(stored.doc, stored.seq);
             return d.kind === 'stale' ? doc : {};
           case 'empty':
             meta = { ...(local ? local.readMeta() : {}) };
@@ -906,6 +952,7 @@
             return {};
           case 'migrate': {
             const m = await commitMigration(e, raw, local ? local.readMeta() : {});
+            check(); // an IndexedDB session that was given up on changes nothing more
             if (m.skipped) {
               stored = await e.readDoc(); // another tab migrated first: just read
               continue;
@@ -917,6 +964,7 @@
           }
           case 'import-mirror': {
             const m = await commitImport(e, stored, raw, mseq);
+            check();
             if (!m) return stored.doc;
             seq = committed = m.seq;
             stampMirror(m.doc, m.seq);
@@ -974,30 +1022,44 @@
     async function attach() {
       if (boot !== 'provisional' || attachStarted) return ready;
       attachStarted = true;
+      // Once this session is given up on (timeout or failure), `live()` is false and nothing the
+      // abandoned work does afterwards may change state, the mirror or the sidecar.
+      let isLive = true;
+      const live = () => isLive;
+      let timer;
       let timedOut = false;
       const work = (async () => {
         const e = await openEngines.find((f) => f.idb)();
+        if (!live()) return e.close();
         let stored = e.takeFirst();
         if (stored === undefined) stored = await e.readDoc();
+        if (!live()) return e.close();
         engine = e;
-        await resolveBoot(e, stored, fastRaw, true);
-        if (boot === 'provisional') boot = 'attached';
+        await resolveBoot(e, stored, fastRaw, true, live);
+        if (live() && boot === 'provisional') boot = 'attached';
       })();
-      const guard = new Promise((res) =>
-        setTimer(() => {
+      const guard = new Promise((res) => {
+        timer = setTimer(() => {
           timedOut = true;
           res();
-        }, attachTimeoutMs),
-      );
+        }, attachTimeoutMs);
+      });
       try {
         await Promise.race([work, guard]);
         if (timedOut)
           throw Object.assign(new Error('attach timed out'), { fallback: 'idb-timeout' });
       } catch (err) {
+        isLive = false;
         work.catch(() => {});
         if (engine && engine.close) engine.close();
-        // saves go to the localStorage blob (plain text, unmarked); a later boot imports them
-        fallBackWith(null, (err && err.fallback) || 'idb-unavailable');
+        if (err && (err.kind === 'future' || err.kind === 'corrupt')) {
+          lock(err.kind); // the transaction refused to replace unreadable or newer data
+        } else {
+          // saves go to the localStorage blob (plain text, unmarked); a later boot imports them
+          fallBackWith(null, (err && err.fallback) || 'idb-unavailable');
+        }
+      } finally {
+        clearTimer(timer);
       }
       resolveReady();
       return ready;
@@ -1046,14 +1108,16 @@
           doc = await resolveBoot(engine, stored, raw, false);
           if (adoptFailed) publish(adoptFailed);
           return doc;
-        } catch {
+        } catch (err) {
           // IndexedDB failed after it opened: the mirror text (if any) runs this session
+          if (err && (err.kind === 'future' || err.kind === 'corrupt')) return failLoad(err.kind);
           if (!local) return failLoad('unavailable');
           let d = null;
           const r = raw ? runMigrations(migrations, raw, { current }) : null;
           if (r && r.ok) d = r.doc;
           if (r && !r.ok) return failLoad(r.reason);
-          return fallBackWith(d || {}, 'idb-unavailable', adoptFailed);
+          fallBackWith(d || {}, 'idb-unavailable', adoptFailed);
+          return staleGuard(raw);
         }
       }
       return loadKv();
@@ -1083,7 +1147,26 @@
       const r = runMigrations(migrations, raw, { current });
       if (!r.ok) return failLoad(r.reason);
       doc = r.doc;
+      delete doc.hbSeq;
       if (adoptFailed) publish(adoptFailed);
+      return fallback ? staleGuard(raw) : doc;
+    }
+
+    /**
+     * A localStorage session that replaces IndexedDB (fallback) must not run writable on a marked
+     * mirror known to be older than IndexedDB (hbSeq below the sidecar's idbSeq): it would write
+     * stale data as the newest. Open read-only on that data instead (the existing "Saving is not
+     * working, close and reopen" bar); a later IndexedDB boot repairs the mirror.
+     */
+    function staleGuard(raw) {
+      const mseq = hbSeqOf(raw);
+      let side = {};
+      try {
+        side = local && local.readMeta ? local.readMeta() : {};
+      } catch {
+        /* unreadable sidecar: no proof of staleness */
+      }
+      if (mseq !== null && side.idbSeq !== undefined && mseq < side.idbSeq) lock('stale');
       return doc;
     }
 
@@ -1175,10 +1258,17 @@
             engine.writeDoc(JSON.parse(job.text), {
               seq: job.seq,
               schema: current,
+              writer,
               expectSeq: committed,
               overwriteAt: now(),
             }),
-          );
+          ).then((res) => {
+            // another tab committed first: its state was kept as pre-overwrite, and our counter
+            // moves past it so the next write is not mistaken for another overwrite
+            if (res && res.overwrote) seq = Math.max(seq, res.seq);
+            if (res) job.committedSeq = res.seq;
+            return res;
+          });
         } catch (e) {
           return Promise.reject(e);
         }
@@ -1221,8 +1311,8 @@
         publish(kind);
         if (!kind && idbMode() && job.seq) {
           if (job.restamp) restampMirror(job);
-          committed = job.seq;
-          noteCommitted(job.seq);
+          committed = job.committedSeq ?? job.seq;
+          noteCommitted(job.committedSeq ?? job.seq);
         }
         if (!kind && job.has && !asked) askPersist();
         if (queued) pump();
@@ -1243,6 +1333,8 @@
       first.then(
         () => finish(null),
         (e) => {
+          if (e && (e.kind === 'future' || e.kind === 'corrupt') && boot !== 'readonly')
+            lock(e.kind);
           if (boot === 'readonly') return finish(readOnlyKind); // refused, not retried
           announce(e);
           // retry once, with the newest payload if one arrived meanwhile
@@ -1256,7 +1348,11 @@
             }
             writeOnce(job).then(
               () => finish(null),
-              (e2) => finish(boot === 'readonly' ? readOnlyKind : classifyError(e2)),
+              (e2) => {
+                if (e2 && (e2.kind === 'future' || e2.kind === 'corrupt') && boot !== 'readonly')
+                  lock(e2.kind);
+                finish(boot === 'readonly' ? readOnlyKind : classifyError(e2));
+              },
             );
           }, retryDelayMs);
         },
@@ -1378,7 +1474,8 @@
         /* unreadable: treated as none */
       }
       if (active) throw kinded('workout-active');
-      boot = 'readonly'; // saves are refused while it runs
+      await settled(); // let queued saves finish first, then refuse new ones while this runs
+      boot = 'readonly';
       readOnlyKind = 'restoring';
       try {
         await settled();
@@ -1392,6 +1489,8 @@
           seq: next,
           schema: current,
           protectId: id,
+          expectSeq: cur && !cur.corrupt ? cur.seq : undefined,
+          overwriteAt: now(),
           snapshot:
             cur && !cur.corrupt
               ? {
@@ -1413,6 +1512,7 @@
           boot = 'attached';
           readOnlyKind = null;
         }
+        if (e && (e.kind === 'future' || e.kind === 'corrupt')) lock(e.kind);
         throw e;
       }
     }

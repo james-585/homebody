@@ -327,12 +327,16 @@ for (const [name, setup, reason] of [
     d.workouts.push({ id: 9001, name: 'fallback session', exercises: [] });
     await store.save(payload(d));
     assert.equal(mirrorOf(r.fs).hbSeq, undefined, 'the fallback blob is unmarked');
+    assert.equal(mirrorOf(r.fs).workouts.length, N + 1, 'the fallback save is in the blob');
+    assert.equal(store.status().state, 'idle', 'and the session stays writable');
     assert.equal(r.fake.inspect()?.stores.get('workouts').rows.size ?? 0, 0);
     // IndexedDB works again: the unmarked blob is imported with a snapshot, nothing is discarded
     r.fake.ctl.hangOpen = r.fake.ctl.errorOpen = r.fake.ctl.blockedOpen = false;
     const next = await r.make().load();
     assert.ok(next.workouts.some((w) => w.id === 9001));
     assert.equal(idbSnaps(r.fake)[0].reason, 'pre-migration');
+    await r.make().load(); // and it is imported exactly once
+    assert.equal(idbSnaps(r.fake).length, 1);
   });
 }
 
@@ -418,7 +422,8 @@ test('AC6: restore(id) puts the snapshot back, snapshotting the present state fi
   );
   const after = await r.make().load();
   assert.equal(after.workouts.length, N);
-  assert.equal(mirrorOf(r.fs).workouts.length, N, 'mirror follows');
+  const { hbSeq, ...mirrorData } = mirrorOf(r.fs); // eslint-disable-line no-unused-vars
+  assert.equal(JSON.stringify(mirrorData), V1_TEXT, 'mirror follows, whole');
   await assert.rejects(store.save(payload(d)), { kind: 'restored' }, 'read-only until reload');
   assert.equal(JSON.stringify(projectToV1(after)), V1_TEXT, 'history equals the snapshot');
 });
@@ -870,4 +875,272 @@ test('invariants hold on the schema 2 store dump fixture', () => {
   const dump = JSON.parse(readFileSync(join(SYNTHETIC_DIR, 'schema2', 'store_dump.json'), 'utf8'));
   const { seq, ...doc } = dump; // eslint-disable-line no-unused-vars
   assert.deepEqual(documentViolations(MIGRATIONS, doc), []);
+});
+
+// ---- second review batch ------------------------------------------------------------------------
+const withWorkout = (text, w) => {
+  const v = JSON.parse(text);
+  v.workouts.unshift(w);
+  return JSON.stringify(v);
+};
+
+test('P1: work that outlives an attach timeout changes nothing (mirror, state, IndexedDB import)', async () => {
+  const fs = seeded();
+  const r = rig({ fs });
+  await r.make().load(); // migrates; mirror left unmarked
+  fs.setItem(STORAGE_KEY, withWorkout(V1_TEXT, { id: 'W1', name: 'W1', exercises: [] })); // pre-M1 build
+  const s2 = rig({ fs, fake: r.fake, fast: true, attachTimeoutMs: 40, txTimeoutMs: 1000 }).make();
+  const d2 = await s2.load();
+  r.fake.ctl.delayCommit = 200; // the import commits, but reports late
+  await s2.attach();
+  assert.equal(s2.status().engine, 'localStorage');
+  assert.equal(s2.status().fallback, 'idb-timeout');
+  d2.workouts.unshift({ id: 'W2', name: 'W2', exercises: [] });
+  await s2.save(payload(d2));
+  assert.ok(fs.getItem(STORAGE_KEY).includes('"W2"'));
+  await settle(350); // the abandoned import finishes now
+  assert.ok(fs.getItem(STORAGE_KEY).includes('"W2"'), 'the fallback save is still in the mirror');
+  assert.equal(hbSeqOf(fs.getItem(STORAGE_KEY)), null, 'and was not restamped');
+  assert.notEqual(s2.status().state, 'readonly');
+  assert.equal(
+    JSON.parse(fs.getItem('hb_storage_meta')).idbSeq,
+    undefined,
+    'no sidecar write either',
+  );
+  await s2.save(payload(d2)); // still writable
+  const s3 = rig({ fs, fake: r.fake, fast: true }).make();
+  const d3 = await s3.load();
+  await s3.attach();
+  assert.ok(d3.workouts.some((w) => w.id === 'W2'));
+  assert.ok(
+    [...r.fake.inspect().stores.get('workouts').rows.values()].some((w) => w && w.id === 'W2'),
+    'imported into IndexedDB on the next boot',
+  );
+});
+
+test('P2: a fallback session on a marked mirror known to be stale opens read-only', async () => {
+  const fs = seeded();
+  const r = rig({ fs });
+  const s1 = r.make();
+  const d = await s1.load();
+  await s1.save(payload(d));
+  await settle();
+  fs.failWrites = quotaError;
+  fs.failKeys = [STORAGE_KEY];
+  d.workouts.unshift({ id: 'NEWER', name: 'NEWER', exercises: [] });
+  await s1.save(payload(d));
+  await settle();
+  fs.failWrites = null;
+  assert.ok(idbHas(r.fake, 'NEWER'));
+  const mirrorBefore = fs.getItem(STORAGE_KEY);
+  r.fake.ctl.hangOpen = true;
+  const s2 = rig({ fs, fake: r.fake, fast: true, timeoutMs: 30 }).make();
+  const d2 = await s2.load();
+  await s2.attach();
+  assert.equal(s2.status().state, 'readonly');
+  assert.equal(s2.status().error, 'unavailable');
+  assert.ok(d2.workouts.length >= N, 'the older data is shown, read-only');
+  await assert.rejects(s2.save(payload(d2)), { kind: 'stale' });
+  assert.equal(fs.getItem(STORAGE_KEY), mirrorBefore, 'nothing written');
+  r.fake.ctl.hangOpen = false;
+  const s3 = rig({ fs, fake: r.fake, fast: true }).make();
+  const d3 = await s3.load();
+  await s3.attach();
+  assert.ok(
+    d3.workouts.some((w) => w.name === 'NEWER'),
+    'IndexedDB wins on the next boot',
+  );
+  assert.equal(idbSnaps(r.fake).filter((s) => s.reason === 'pre-reconcile').length, 0);
+});
+
+test('P3/P4: a write transaction never replaces newer or unreadable data, whatever the tab believed', async () => {
+  for (const [label, mutate, kind] of [
+    ['newer schema', (m) => (m.set('schemaVersion', 3), m.set('seq', 99)), 'future'],
+    ['seq not a number', (m) => m.set('seq', '7'), 'corrupt'],
+    ['no schemaVersion', (m) => m.delete('schemaVersion'), 'corrupt'],
+  ]) {
+    const r = rig({ fs: seeded() });
+    const s1 = r.make();
+    const d = await s1.load();
+    await s1.save(payload(d));
+    await settle();
+    const meta = r.fake.inspect().stores.get('meta').rows;
+    mutate(meta);
+    const before = JSON.stringify([...meta]);
+    const rows = r.fake.inspect().stores.get('workouts').rows.size;
+    d.workouts.unshift({ id: 'OLD-TAB' });
+    await assert.rejects(s1.save(payload(d)), { kind }, label);
+    await settle();
+    assert.equal(JSON.stringify([...meta]), before, label);
+    assert.equal(r.fake.inspect().stores.get('workouts').rows.size, rows, label);
+    assert.equal(s1.status().state, 'readonly', label);
+  }
+});
+
+test('restore also refuses to replace newer or unreadable data', async () => {
+  const r = rig({ fs: seeded() });
+  const s1 = r.make();
+  await s1.load();
+  r.fake.inspect().stores.get('meta').rows.set('schemaVersion', 3);
+  await assert.rejects(s1.restore((await s1.snapshots())[0].id), { kind: 'future' });
+  assert.equal(r.fake.inspect().stores.get('meta').rows.get('schemaVersion'), 3);
+  assert.equal(s1.status().state, 'readonly');
+});
+
+test('snapshot reasons are a closed set', async () => {
+  const r = rig({ fs: seeded() });
+  const store = r.make();
+  await store.load();
+  await store.snapshot('<img src=x onerror=1>');
+  await store.snapshot('pre-import');
+  const reasons = (await store.snapshots()).map((s) => s.reason);
+  assert.deepEqual(reasons, ['pre-migration', 'manual', 'pre-import']);
+});
+
+test('pre-reconcile snapshots are never pruned', async () => {
+  const r = await migrated();
+  for (let i = 0; i < 7; i++) {
+    r.fs.setItem(STORAGE_KEY, JSON.stringify(withWorkouts(i + 1)));
+    await r.make().load();
+  }
+  assert.equal(idbSnaps(r.fake).filter((s) => s.reason === 'pre-reconcile').length, 7);
+});
+
+test('the pre-reconcile and pre-overwrite payloads are the replaced state, whole', async () => {
+  const r = await migrated();
+  r.fs.setItem(STORAGE_KEY, JSON.stringify(withWorkouts(3)));
+  await r.make().load();
+  const rec = idbSnaps(r.fake).find((s) => s.reason === 'pre-reconcile');
+  assert.deepEqual(JSON.parse(rec.payload), { ...V1, schemaVersion: 2 });
+
+  const q = rig({ fs: seeded() });
+  const a = q.make();
+  const da = await a.load();
+  const b = rig({ fs: q.fs, fake: q.fake }).make();
+  const db = await b.load();
+  db.workouts.unshift({ id: 11, name: 'FROM-B', exercises: [] });
+  await b.save(payload(db));
+  const expected = { ...payload(db), schemaVersion: 2 };
+  await a.save(payload(da));
+  await settle();
+  const over = idbSnaps(q.fake).find((s) => s.reason === 'pre-overwrite');
+  assert.deepEqual(JSON.parse(over.payload), expected);
+});
+
+test("three writes by a tab that missed another tab's commit make exactly one pre-overwrite", async () => {
+  const r = rig({ fs: seeded() });
+  const a = r.make();
+  const da = await a.load();
+  const b = rig({ fs: r.fs, fake: r.fake }).make();
+  const db = await b.load();
+  db.workouts.unshift({ id: 21, name: 'B1', exercises: [] });
+  await b.save(payload(db));
+  for (const id of [31, 32, 33]) {
+    da.workouts.unshift({ id, name: `A${id}`, exercises: [] });
+    await a.save(payload(da));
+    await settle();
+  }
+  assert.equal(idbSnaps(r.fake).filter((s) => s.reason === 'pre-overwrite').length, 1);
+  assert.ok(idbMeta(r.fake).seq > 2);
+});
+
+test('a retry after a transaction timeout is not mistaken for another tab', async () => {
+  const r = rig({ fs: seeded(), txTimeoutMs: 30 });
+  const store = r.make();
+  const d = await store.load();
+  r.fake.ctl.delayCommit = 45; // commits at once, reports late (after the 30 ms timeout)
+  d.workouts.unshift({ id: 41, name: 'SLOW', exercises: [] });
+  await store.save(payload(d));
+  await settle(200);
+  assert.equal(idbSnaps(r.fake).filter((s) => s.reason === 'pre-overwrite').length, 0);
+  assert.ok(idbHas(r.fake, 'SLOW'));
+});
+
+test('a read-only store never calls the engine to write', async () => {
+  for (const mutate of [(m) => m.set('schemaVersion', 3), (m) => m.delete('schemaVersion')]) {
+    const r = rig({ fs: seeded() });
+    const s1 = r.make();
+    const d = await s1.load();
+    await s1.save(payload(d));
+    await settle();
+    mutate(r.fake.inspect().stores.get('meta').rows);
+    let writes = 0;
+    const real = createIdbEngine;
+    const openIdb = () =>
+      real({ factory: r.fake.factory, timeoutMs: 200 })
+        .open()
+        .then((e) => {
+          const w = e.writeDoc;
+          e.writeDoc = (...a) => (writes++, w(...a));
+          return e;
+        });
+    openIdb.idb = true;
+    const store = createStore({
+      openEngines: [openIdb, () => createLocalEngine(r.fs)],
+      migrations: MIGRATIONS,
+      current: LATEST_SCHEMA,
+      fastBoot: true,
+      setTimer: (fn) => setTimeout(fn, 0),
+    });
+    const d2 = await store.load();
+    const early = store.save(payload(d2)).catch(() => {}); // queued before attach
+    await store.attach();
+    await early;
+    await store.save(payload(d2)).catch(() => {});
+    await store.restore(1).catch(() => {});
+    await store.snapshot('manual').catch(() => {});
+    await settle();
+    assert.equal(writes, 0);
+  }
+});
+
+test('fuzz: the mirror text always parses back to the payload with the right hbSeq', async () => {
+  let x = 123456789;
+  const rnd = () => (x = (Math.imul(x, 1103515245) + 12345) >>> 0) / 2 ** 32;
+  const alphabet = [
+    '"',
+    '\\',
+    '{',
+    '}',
+    ',',
+    ':',
+    '\n',
+    '\r',
+    '\u2028',
+    '\ud800',
+    '\udc00',
+    'hbSeq',
+    '"hbSeq":9}',
+    ' ',
+    'a',
+    '0',
+  ];
+  const str = () =>
+    Array.from(
+      { length: Math.floor(rnd() * 12) },
+      () => alphabet[Math.floor(rnd() * alphabet.length)],
+    ).join('');
+  for (let i = 0; i < 60; i++) {
+    const proto = JSON.parse('{"__proto__":{"polluted":1},"constructor":{"x":2},"n":' + i + '}');
+    const p = {
+      workouts: [{ id: i, notes: str(), ...proto }],
+      favourites: [str()],
+      profile: { name: str() },
+    };
+    const r = rig({ fs: new FakeStorage() });
+    const store = r.make();
+    await store.load();
+    await store.save(p);
+    const raw = r.fs.getItem(STORAGE_KEY);
+    assert.equal(hbSeqOf(raw), 1, JSON.stringify(p));
+    const m = JSON.parse(raw);
+    assert.equal(m.hbSeq, 1);
+    assert.equal(JSON.stringify(m.workouts), JSON.stringify(p.workouts));
+    assert.equal(JSON.stringify(m.profile), JSON.stringify(p.profile));
+    assert.equal({}.polluted, undefined);
+    // and a non-six-key payload (projection path) agrees
+    await store.save({ ...p, extra: str() });
+    assert.equal(hbSeqOf(r.fs.getItem(STORAGE_KEY)), 2);
+    assert.equal('extra' in JSON.parse(r.fs.getItem(STORAGE_KEY)), false);
+  }
 });
