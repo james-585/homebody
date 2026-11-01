@@ -391,6 +391,36 @@ test.describe('snapshots, failure and the boot rule', () => {
     expect((await dump(page)).workouts).toHaveLength(N + 1);
   });
 
+  test('an IndexedDB write failure shows the bar; a mirror-only failure does not', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await idbProbes(page);
+    await page.addInitScript(() => {
+      window.__mirrorFail = false;
+      const orig = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) {
+        if (k === 'vaultfit_v1' && window.__mirrorFail) {
+          throw new DOMException('quota', 'QuotaExceededError');
+        }
+        return orig.call(this, k, v);
+      };
+    });
+    await openApp(page, siteURL);
+    await page.evaluate(() => {
+      window.__mirrorFail = true;
+      return persistSave();
+    });
+    await expect(page.locator(BAR)).toBeHidden();
+    expect(await page.evaluate(() => HB.storage.status())).toMatchObject({ mirror: 'stale' });
+    await page.evaluate(() => {
+      window.__mirrorFail = false;
+      window.__txFail = true;
+      persistSave();
+    });
+    await expect(page.locator(BAR)).toBeVisible();
+  });
+
   test('killed between the mirror write and the IndexedDB commit: the next boot adopts the mirror', async ({
     appPage: page,
     siteURL,

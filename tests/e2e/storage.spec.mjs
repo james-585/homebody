@@ -94,7 +94,8 @@ test.describe('boot (AC1, principle 5)', () => {
       await persistSave();
       return localStorage.getItem('vaultfit_v1');
     });
-    expect(Object.keys(JSON.parse(stored))).toEqual([
+    // hbSeq (T6) is the one additive key; a pre-M1 build ignores it
+    expect(Object.keys(JSON.parse(stored)).filter((k) => k !== 'hbSeq')).toEqual([
       'workouts',
       'personalRecords',
       'bodyMetrics',
@@ -154,6 +155,14 @@ const BAR = '#hb-save';
 async function injectFaults(page) {
   await page.addInitScript(() => {
     window.__fail = { main: false, wm: false };
+    // T6: the main document now lives in IndexedDB, so "the main write fails" also fails the commit.
+    const origTx = globalThis.IDBDatabase.prototype.transaction;
+    globalThis.IDBDatabase.prototype.transaction = function (names, mode) {
+      if (window.__fail.main && mode === 'readwrite') {
+        throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+      }
+      return origTx.apply(this, arguments);
+    };
     const orig = Storage.prototype.setItem;
     Storage.prototype.setItem = function (k, v) {
       if (
