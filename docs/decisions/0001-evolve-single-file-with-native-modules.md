@@ -34,3 +34,6 @@ Facts that shape the choice:
 - − Module scripts are deferred, so boot becomes async; first paint must not regress (accessibility-performance-reviewer checks start-up).
 - − More files to precache; handled by the generated precache list (ADR 0003).
 - Revisit when `src/` passes ~25 modules, or TypeScript or a UI framework is wanted.
+
+## Amendment, 2026-11-01: shipped code under `src/` is classic scripts, not ES modules (T5a)
+Measured in T5a, median of 9 interleaved runs against the pre-T5a commit: an ES-module boot (`<script type="module">`, with or without top-level await or the `hb-booting` flag) put the first visible frame at 230 to 240 ms against 120 to 140 ms; the same code as a classic `<script src>` measured at baseline. The cause is the module path, not the storage logic. Decision (James, in chat): storage and boot ship as one classic IIFE file, `src/hb-storage.js`, attaching a namespace (`HBStorage`) and `window.HB`; Node tests import the same file through a helper, so there is still no build step. The "native ES modules" and `src/boot.js` layout above stands for later code only if a new measurement shows no first-paint cost; until then new shipped code under `src/` follows the classic-script pattern.

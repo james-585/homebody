@@ -30,12 +30,13 @@ export default [
     languageOptions: { ecmaVersion: 2024, sourceType: 'module', globals: nodeGlobals },
   },
   {
-    // Shipped ES modules (src/): browser globals only.
+    // Shipped classic scripts (src/): browser globals only.
     files: ['src/**/*.js'],
     languageOptions: {
       ecmaVersion: 2024,
-      sourceType: 'module',
+      sourceType: 'script',
       globals: {
+        globalThis: 'readonly',
         window: 'readonly',
         document: 'readonly',
         console: 'readonly',

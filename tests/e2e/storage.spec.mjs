@@ -65,7 +65,7 @@ test.describe('boot (AC1, principle 5)', () => {
     appPage,
     siteURL,
   }) => {
-    await appPage.route('**/src/storage/store.js', (route) => route.abort());
+    await appPage.route('**/src/hb-storage.js', (route) => route.abort());
     const raw = JSON.stringify({ workouts: [{ id: 1, name: 'keep', exercises: [] }] });
     await seedStorage(appPage, { vaultfit_v1: raw });
     await appPage.goto(siteURL + 'index.html');

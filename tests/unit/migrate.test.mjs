@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { runMigrations } from '../../src/storage/migrate.js';
+import { runMigrations } from './helpers/hb-storage.mjs';
 import { applyMigrations } from './helpers/migration-harness.mjs';
 import { loadAllFixtures, stripHeader } from './helpers/load-fixtures.mjs';
 

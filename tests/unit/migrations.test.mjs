@@ -7,8 +7,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SYNTHETIC_DIR, listFiles, loadAllFixtures } from './helpers/load-fixtures.mjs';
-import { createStore } from '../../src/storage/store.js';
-import { createLocalEngine } from '../../src/storage/engine-local.js';
+import { createStore } from './helpers/hb-storage.mjs';
+import { createLocalEngine } from './helpers/hb-storage.mjs';
 import { FakeStorage } from './helpers/fake-storage.mjs';
 import { applyMigrations, checkInvariants, toStoreDoc } from './helpers/migration-harness.mjs';
 

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createStore, STORAGE_KEY } from '../../src/storage/store.js';
-import { createLocalEngine } from '../../src/storage/engine-local.js';
+import { createStore, STORAGE_KEY } from './helpers/hb-storage.mjs';
+import { createLocalEngine } from './helpers/hb-storage.mjs';
 import { FakeStorage, createManualEngine, quotaError } from './helpers/fake-storage.mjs';
 import { loadAllFixtures, stripHeader } from './helpers/load-fixtures.mjs';
 
