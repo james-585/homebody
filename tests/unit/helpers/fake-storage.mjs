@@ -45,13 +45,19 @@ export function createManualEngine(initial = {}) {
     pending,
     read: (k) => (data.has(k) ? data.get(k) : null),
     write(k, text) {
-      return new Promise((resolve) => {
-        pending.push(() => {
+      return new Promise((resolve, reject) => {
+        const done = () => {
           data.set(k, text);
           written.push(text);
           resolve();
-        });
+        };
+        done.fail = (e) => reject(e); // the write fails: nothing is stored
+        pending.push(done);
       });
+    },
+    /** Fail the oldest in-flight write. */
+    failOne(e) {
+      pending.shift()?.fail(e);
     },
     /** Complete the oldest in-flight write. */
     flushOne() {

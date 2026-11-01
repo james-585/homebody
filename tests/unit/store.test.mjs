@@ -102,7 +102,7 @@ test('forced quota: one retry, error published, a later save succeeds and clears
   assert.deepEqual(seen, ['retrying:quota', 'failed:quota', 'idle:-']);
 });
 
-test('interrupted write leaves the previous valid blob', async () => {
+test('a failed write leaves the previous valid blob (setItem is atomic per key)', async () => {
   const fs = new FakeStorage();
   const store = mk(fs);
   await store.load();
@@ -235,3 +235,95 @@ test('persist() is not asked when the save fails, and a failing sidecar write is
   assert.equal(calls, 1);
   assert.equal(store.status().error, undefined);
 });
+
+test('save() with an unserialisable payload rejects as unknown, publishes, writes nothing', async () => {
+  const fs = new FakeStorage();
+  const store = mk(fs);
+  await store.load();
+  const seen = [];
+  store.subscribe((s) => seen.push(s.state + ':' + (s.error ?? '-')));
+  const circular = { workouts: [] };
+  circular.self = circular;
+  await assert.rejects(store.save(circular), { kind: 'unknown' });
+  assert.deepEqual(seen, ['failed:unknown']);
+  assert.deepEqual(fs.log, []);
+  await store.save({ workouts: [1] }); // the store still works afterwards
+  assert.equal(store.status().error, undefined);
+});
+
+test('a save arriving during the retry delay is the one written; both promises settle', async () => {
+  const fs = new FakeStorage();
+  const timers = [];
+  const store = mk(fs, { setTimer: (fn) => timers.push(fn) });
+  await store.load();
+  fs.failWrites = quotaError;
+  const a = store.save({ v: 'A' });
+  await Promise.resolve(); // first attempt has failed; the retry is waiting on a timer
+  const b = store.save({ v: 'B' });
+  fs.failWrites = null;
+  assert.equal(timers.length, 1);
+  timers.shift()();
+  await Promise.all([a, b]);
+  assert.deepEqual(JSON.parse(fs.getItem(STORAGE_KEY)), { v: 'B' });
+});
+
+test('a save during the retry write is queued and written after it; final blob is the newest', async () => {
+  const eng = createManualEngine();
+  const timers = [];
+  const store = createStore({ openEngines: [() => eng], setTimer: (fn) => timers.push(fn) });
+  await store.load();
+  const a = store.save({ v: 'A' });
+  eng.failOne(quotaError());
+  await new Promise((r) => setTimeout(r, 0));
+  timers.shift()(); // retry write is now in flight
+  assert.equal(eng.pending.length, 1);
+  const b = store.save({ v: 'B' });
+  eng.flushOne(); // retry of A completes
+  await a;
+  assert.equal(eng.pending.length, 1);
+  eng.flushOne();
+  await b;
+  assert.deepEqual(eng.written, ['{"v":"A"}', '{"v":"B"}']);
+  assert.deepEqual(JSON.parse(eng.data.get(STORAGE_KEY)), { v: 'B' });
+});
+
+test('a corrupt legacy key is copied as found, the store goes read-only, the legacy key is untouched', async () => {
+  const fs = new FakeStorage({ homebody_v1: '{"workouts": [truncated' });
+  const store = mk(fs);
+  assert.deepEqual(await store.load(), {});
+  assert.equal(store.status().error, 'corrupt');
+  assert.equal(fs.getItem('homebody_v1'), '{"workouts": [truncated');
+  assert.equal(fs.getItem(STORAGE_KEY), '{"workouts": [truncated');
+  await assert.rejects(store.save({ workouts: [] }), { kind: 'corrupt' });
+  assert.ok(!fs.log.some((l) => l.op === 'remove'));
+});
+
+test('rawText() returns the stored text unchanged and never writes', async () => {
+  const raw = '{"workouts": [oops';
+  const fs = new FakeStorage({ [STORAGE_KEY]: raw });
+  const store = mk(fs);
+  await store.load();
+  assert.equal(store.rawText(), raw);
+  assert.deepEqual(fs.log, []);
+});
+
+for (const [name, sidecar] of [
+  ['invalid JSON', '{not json'],
+  ['an array', '[1,2,3]'],
+  ['a __proto__ payload', '{"__proto__":{"polluted":"yes"},"persistAskedAt":"x"}'],
+  ['wrong types', '{"persistAskedAt":"yesterday","persistGranted":{"a":1}}'],
+  ['a huge string', JSON.stringify({ persistAskedAt: 'x'.repeat(2_000_000) })],
+]) {
+  test(`malformed sidecar (${name}): ignored, no pollution, main blob untouched`, async () => {
+    const main = JSON.stringify({ workouts: [{ id: 1 }] });
+    const fs = new FakeStorage({ [STORAGE_KEY]: main, hb_storage_meta: sidecar });
+    const store = mk(fs);
+    await store.load();
+    assert.equal(store.status().persistAsked, false);
+    assert.equal(store.status().persistGranted, undefined);
+    assert.equal({}.polluted, undefined);
+    assert.equal(Object.prototype.polluted, undefined);
+    assert.equal(fs.getItem(STORAGE_KEY), main);
+    assert.deepEqual(fs.log, []);
+  });
+}

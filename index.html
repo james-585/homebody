@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<script>document.documentElement.classList.add('hb-booting');setTimeout(function(){document.documentElement.classList.remove('hb-booting')},3000);</script>
+<script>document.documentElement.classList.add('hb-booting');setTimeout(function(){document.documentElement.classList.remove('hb-booting')},1500);</script>
 <style>html.hb-booting body{visibility:hidden}</style>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -1095,11 +1095,20 @@ let state = {
   diffFilter: null,
 };
 
-// Storage lives in src/storage/ (window.HB.storage); these shims keep the call sites unchanged.
+// Storage lives in src/hb-storage.js (window.HB.storage); these shims keep the call sites unchanged.
 // persistSave() stays synchronous: the payload is serialised at call time inside save(). Failure
 // is surfaced by the store, not by callers, so the returned promise is marked handled here.
+// hbLoadedOk: persistLoad copied the stored document into state this session. Until then nothing
+// may be written, so a storage script that arrives late can never overwrite saved data with
+// the empty state the app started on.
+let hbLoadedOk = false;
 function persistSave() {
-  if (!window.HB) return Promise.reject(new Error('storage unavailable')); // boot failed: never write
+  if (!window.HB || !hbLoadedOk) { // boot failed or not finished: never write; say so
+    const r = Promise.reject(new Error('storage unavailable'));
+    r.catch(() => {});
+    if (window.hbSaveBarLoad) window.hbSaveBarLoad('unavailable', true); // soft: cleared if the store attaches later
+    return r;
+  }
   const p = window.HB.storage.save({ workouts:state.workouts, personalRecords:state.personalRecords, bodyMetrics:state.bodyMetrics, userPlans:state.userPlans, profile:state.profile, favourites:state.favourites });
   p.catch(() => {});
   return p;
@@ -1108,6 +1117,7 @@ function persistLoad() {
   try {
     const s = window.HB && window.HB.storage.loaded();
     if (!s) return;
+    hbLoadedOk = true;
     if (s.workouts) state.workouts = s.workouts;
     if (s.personalRecords) state.personalRecords = s.personalRecords;
     if (s.bodyMetrics) state.bodyMetrics = s.bodyMetrics;
@@ -7300,11 +7310,13 @@ if (screen.orientation && screen.orientation.lock) {
     '#hb-save .hb-r{display:flex;gap:8px;margin-top:10px;position:sticky;bottom:-10px;background:var(--surface);padding:0 0 10px;margin-bottom:-10px}' +
     '#hb-save .hb-r button{flex:1 1 0;min-height:48px;min-width:96px}' +
     '#hb-save.hb-inline .hb-in{display:flex;gap:10px;align-items:center}' +
-    '#hb-save.hb-inline .hb-h{flex:1 1 auto;min-width:0;align-items:center}' +
+    '#hb-save.hb-inline .hb-h{flex:1 1 auto;min-width:0}' +
     '#hb-save.hb-inline .hb-r{margin:0;position:static;padding:0;flex:0 0 auto}' +
+    '#hb-save.hb-inline .hb-r button{flex:none;width:9.5em;min-width:0;padding-left:6px;padding-right:6px;white-space:nowrap}' +
+    'html[data-theme="light"] #hb-save{box-shadow:0 6px 20px rgba(0,0,0,0.18)}' +
     '#hb-save button[hidden]{display:none}#hb-save button[aria-disabled=true]{pointer-events:none}' +
     '#hb-save button:focus-visible{outline:2px solid var(--text);outline-offset:2px}' +
-    'html.hb-save-on :is(.app,.wm-overlay,.modal-overlay,.show-workout-overlay,.show-wkt-overlay,#m-ex-sheet,body > [style*="position:fixed"][style*="inset:0"]){top:var(--hb-bar-h) !important}' +
+    'html.hb-save-on :is(.app,.wm-overlay,.modal-overlay,.show-workout-overlay,.show-wkt-overlay,#m-ex-sheet,#m-fab-backdrop,#m-wakelock-help){top:var(--hb-bar-h) !important}' +
     'html.hb-save-on .modal-sheet{max-height:calc(92vh - var(--hb-bar-h))}' +
     '.hb-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}' +
     '@media (prefers-reduced-motion:reduce){#hb-save{transition:none}}';
@@ -7318,8 +7330,8 @@ if (screen.orientation && screen.orientation.lock) {
   const txt = el('div', 'hb-txt', head), tEl = el('div', 'hb-t', txt), bEl = el('div', 'hb-b', txt);
   const row = el('div', 'hb-r', inner);
   const mkBtn = (cls) => { const b = el('button', cls, row); b.type = 'button'; return b; };
-  const retryB = mkBtn('btn-secondary'), exportB = mkBtn('btn-primary'), doneB = mkBtn('btn-secondary');
-  exportB.textContent = 'Export'; doneB.textContent = 'Done';
+  const retryB = mkBtn('btn-secondary'), rawB = mkBtn('btn-secondary'), exportB = mkBtn('btn-primary'), doneB = mkBtn('btn-secondary');
+  exportB.textContent = 'Export'; doneB.textContent = 'Done'; rawB.textContent = 'Export saved file';
   document.body.insertBefore(bar, document.body.firstChild);
   const alertEl = el('div', 'hb-sr'); alertEl.setAttribute('role', 'alert');     // once per episode
   const statusEl = el('div', 'hb-sr'); statusEl.setAttribute('role', 'status');  // polite updates
@@ -7328,13 +7340,16 @@ if (screen.orientation && screen.orientation.lock) {
   // S: what has gone wrong. load: null|'corrupt'|'future'|'unavailable'; main: null|kind; phase: how the
   // main failure is going; wm: the active-workout save failed; ok: show "Saved".
   const S = { load: null, main: null, phase: 'failed', wm: false, ok: false };
-  let userRetry = false, shownNow = false, alerted = false, lastH = 0, okTimer = 0, stillTimer = 0, wmFlag = false, prevHold = false;
+  let forceRow = false, userRetry = false, shownNow = false, alerted = false, lastH = 0, okTimer = 0, stillTimer = 0, wmFlag = false, prevHold = false;
   const wmOpen = () => !!document.getElementById('wm-overlay');
   const hold = () => !!(S.main || (S.wm && wmOpen()));
   window.hbSaveHold = hold;  // the update card and About Update/Reload wait while this is true
 
   function view() {
-    if (S.load) return { title: COPY[S.load][0], body: COPY[S.load][1], warn: true, btns: ['export'], inline: true };
+    if (S.load) {
+      const raw = rawStored();
+      return { title: COPY[S.load][0], body: COPY[S.load][1], warn: true, btns: raw ? ['raw', 'export'] : ['export'], inline: !raw };
+    }
     if (S.main) {
       const busy = S.phase === 'retrying' || S.phase === 'busy';
       return { title: COPY.notSaved, body: COPY.body[S.main] || COPY.body.unknown, bad: true, btns: ['retry', 'export'],
@@ -7345,8 +7360,16 @@ if (screen.orientation && screen.orientation.lock) {
     if (S.ok) return { title: COPY.saved[0], body: COPY.saved[1], ok: true, btns: ['done'] };
     return null;
   }
+  // Read-only look at the stored text (never writes). Without the store (boot failed) read it directly.
+  function rawStored() {
+    try { return window.HB ? window.HB.storage.rawText() : localStorage.getItem('vaultfit_v1'); } catch (e) { return null; }
+  }
   function scrollBox() { return document.getElementById('wm-body') || document.querySelector('.page.active'); }
   function applyHeight() {
+    // At large text the single inline button can be cut off: fall back to the row layout.
+    if (shownNow && bar.classList.contains('hb-inline') && bar.scrollHeight > bar.clientHeight + 1) {
+      forceRow = true; bar.classList.remove('hb-inline');
+    }
     const h = shownNow ? Math.ceil(bar.getBoundingClientRect().height) : 0;
     if (h === lastH) return;
     const d = h - lastH; lastH = h;
@@ -7358,7 +7381,7 @@ if (screen.orientation && screen.orientation.lock) {
     const v = view();
     if (!v) {
       if (shownNow) {
-        shownNow = false; alerted = false; statusEl.textContent = '';
+        shownNow = false; alerted = false; forceRow = false; statusEl.textContent = ''; alertEl.textContent = '';
         if (bar.contains(document.activeElement)) {
           const t = (wmOpen() && document.querySelector('.wm-finish-btn')) || document.querySelector('.nav-tab.active');
           if (t) t.focus({ preventScroll: true });
@@ -7367,22 +7390,36 @@ if (screen.orientation && screen.orientation.lock) {
       }
     } else {
       tEl.textContent = v.title; bEl.textContent = v.body;
-      bar.classList.toggle('hb-inline', !!v.inline);
+      bar.classList.toggle('hb-inline', !!v.inline && !forceRow);
       bar.classList.toggle('hb-ok', !!v.ok); bar.classList.toggle('hb-warn', !!v.warn);
       mk.className = 'hb-mk ' + (v.bad ? 'hb-bad' : v.warn ? 'hb-pause' : 'hb-tick');
       mk.textContent = v.bad ? '!' : v.ok ? '✓' : '';
-      retryB.hidden = !v.btns.includes('retry'); exportB.hidden = !v.btns.includes('export'); doneB.hidden = !v.btns.includes('done');
+      const want = { retry: v.btns.includes('retry'), raw: v.btns.includes('raw'), export: v.btns.includes('export'), done: v.btns.includes('done') };
+      const fb = document.activeElement;   // a focused button that is about to disappear: focus moves on, never to <body>
+      if (bar.contains(fb) && ((fb === retryB && !want.retry) || (fb === exportB && !want.export) || (fb === rawB && !want.raw))) {
+        const t = (wmOpen() && document.querySelector('.wm-finish-btn')) || document.querySelector('.nav-tab.active');
+        if (t) t.focus({ preventScroll: true });
+      }
+      retryB.hidden = !want.retry; rawB.hidden = !want.raw; exportB.hidden = !v.btns.includes('export'); doneB.hidden = !v.btns.includes('done');
       if (v.retry) { retryB.textContent = v.retry; if (v.retryOff) retryB.setAttribute('aria-disabled', 'true'); else retryB.removeAttribute('aria-disabled'); }
       if (!shownNow) {
         shownNow = true; bar.inert = false; bar.classList.add('hb-on');
-        if (!alerted && !v.ok) { alerted = true; requestAnimationFrame(() => { if (shownNow) alertEl.textContent = v.title + '. ' + v.body; }); }
+      }
+      if (v.ok) { alerted = false; alertEl.textContent = ''; } // Saved ends the episode: a new failure announces again
+      else if (!alerted) {
+        alerted = true;
+        const said = (/[.!?]$/.test(v.title) ? v.title : v.title + '.') + ' ' + v.body;
+        requestAnimationFrame(() => { if (shownNow) alertEl.textContent = said; });
       }
       applyHeight();
       if (v.ok) { clearTimeout(okTimer); okTimer = setTimeout(autoDone, 4000); }
     }
     const h = hold();
-    if (prevHold && !h) window.dispatchEvent(new StorageEvent('storage', { key: null })); // the update card re-checks
-    prevHold = h;
+    if (prevHold !== h) {
+      prevHold = h;
+      if (window.hbAboutRefresh) window.hbAboutRefresh();
+      if (!h) window.dispatchEvent(new StorageEvent('storage', { key: null })); // the update card re-checks
+    }
   }
   function autoDone() { if (bar.contains(document.activeElement)) { bar.addEventListener('focusout', autoDone, { once: true }); return; } done(); }
   function done() { clearTimeout(okTimer); S.ok = false; render(); }
@@ -7398,13 +7435,14 @@ if (screen.orientation && screen.orientation.lock) {
     render();
   }
   window.hbSaveBarAttach = function (storage) {
+    if (S.soft) { S.load = null; S.soft = false; }
     const st = storage.status();
     if (st.state === 'readonly') S.load = st.error;
     else if (st.error) { S.main = st.error; S.phase = 'failed'; }
     storage.subscribe(onStore);
     render();
   };
-  window.hbSaveBarLoad = function (reason) { S.load = reason; render(); };      // hbBootFailed: no store
+  window.hbSaveBarLoad = function (reason, soft) { S.load = reason; S.soft = !!soft; render(); };      // hbBootFailed: no store
   window.hbSaveBarWmFailed = function () { wmFlag = true; if (userRetry) return; S.wm = true; S.ok = false; render(); };
 
   async function doRetry() {
@@ -7421,6 +7459,16 @@ if (screen.orientation && screen.orientation.lock) {
   retryB.addEventListener('click', doRetry);
   exportB.addEventListener('click', () => { try { mExportData(); } catch (e) { /* export has its own toast */ } });
   doneB.addEventListener('click', done);
+  // Download the stored text exactly as it is (unreadable or newer-version data). Read-only.
+  rawB.addEventListener('click', () => {
+    const t = rawStored();
+    if (t === null || t === undefined) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([t], { type: 'text/plain' }));
+    a.download = 'homebody-saved-data-as-found.txt';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
   new MutationObserver(() => {   // the workout layer opened or closed
     if (S.wm && !wmOpen() && !S.main) { S.wm = false; S.ok = shownNow; }
     if (shownNow || S.wm || S.main) render();
@@ -7447,6 +7495,8 @@ function hbStart() {
 }
 // The module failed to load or run: start on empty state. window.HB stays unset, so persistSave()
 // rejects and nothing is ever written over the stored data.
+// A storage script that loads but throws never reaches hbStart: treat it like a failed load.
+window.addEventListener('error', e => { if (e.filename && /hb-storage\.js(\?|$)/.test(e.filename)) hbBootFailed(); });
 function hbBootFailed() {
   if (window.hbSaveBarLoad) window.hbSaveBarLoad('unavailable'); // state 8, before the first visible frame
   hbStart();
@@ -7981,7 +8031,7 @@ function hbWorkoutActive() {
     aDot.style.transform = bad ? 'rotate(45deg)' : '';
     if (activeVersion) { aVersion.textContent = activeVersion; aVersion.style.fontFamily = 'ui-monospace,SFMono-Regular,Menlo,monospace'; aCopy.hidden = false; }
     else { aVersion.textContent = 'Unknown'; aVersion.style.fontFamily = 'Inter,sans-serif'; aCopy.hidden = true; }
-    aRow.hidden = !(kind && dismissed);
+    aRow.hidden = !(kind && dismissed) || !!(window.hbSaveHold && window.hbSaveHold());
     if (kind) { aLabel.textContent = COPY[kind].line; if (!busyOn) aBtn.textContent = COPY[kind].go; }
   }
 
@@ -8183,6 +8233,7 @@ function hbWorkoutActive() {
     reg.update().catch(() => {});
   }
 
+  window.hbAboutRefresh = refreshAbout;               // the save-problem bar calls this when its hold starts or ends
   refreshAbout();
   if (SW) {
     SW.addEventListener('controllerchange', onControllerChange);

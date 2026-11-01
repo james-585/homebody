@@ -208,3 +208,11 @@ Run at 375x667, 390x844 and 430x932, dark and light, unless stated. Taps use rea
 - The store's `subscribe` needs to publish: `retrying` (synchronously, inside the failing `persistSave()` call), `failed` with `kind`, `saving` (Retry started), `saved`, and the load-time `readonly` with `reason` (`corrupt` | `future` | `unavailable`). If it cannot publish `retrying` synchronously, the bar starts at state 2 after the automatic retry, and acceptance check 1's "same frame" becomes "within the retry delay": report this rather than changing the spec.
 - State 5 needs the Q3 `wmPersist` catch to publish into the same channel, and a way to know the active-workout save later succeeded (check 7). If that needs more than the approved one-line catch edit, stop and report (T5 stop condition).
 - `hbBootFailed()` has no `HB.storage`; it renders state 8 directly through the same render function.
+
+## Implementation notes (storage-sync-engineer, T5b; approved copy above is unchanged)
+- **Raw export in the load-time states (James, after review).** States 6, 7 and 8 carry a second button, `Export saved file`, next to `Export`. It downloads the stored text of `vaultfit_v1` exactly as found (`homebody-saved-data-as-found.txt`), read-only; it never writes and never parses. These states therefore use the row layout. If nothing can be read, the button is absent and the single inline `Export` remains.
+- **Layers the push rule moves:** `.app`, `.wm-overlay`, `.modal-overlay`, `.show-workout-overlay`, `.show-wkt-overlay`, `#m-ex-sheet`, `#m-fab-backdrop`, `#m-wakelock-help`. **Not moved** (so the bar can cover their top): the first-run tour card (K27) and any other script-built fixed layer not in that list. If a new full-screen layer is added, add it to the list.
+- The inline button has a fixed width of 9.5em so the bar height does not change between `Retry`, `Saving…` and `Still not saved`. When the inline layout overflows (large text) the bar switches to the row layout.
+- Update card and About Update/Reload wait while the bar is in states 1 to 3b or 5 (Q1). About's row is hidden during the hold.
+- Light theme uses a lighter shadow (`0 6px 20px rgba(0,0,0,0.18)`).
+

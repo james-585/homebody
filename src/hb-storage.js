@@ -221,7 +221,9 @@
     // Called once the document is loaded. Nothing here is awaited on the boot path.
     function afterLoad() {
       try {
-        const m = JSON.parse(engine.read(META_KEY) || 'null');
+        const rawMeta = engine.read(META_KEY);
+        // The sidecar is tiny; anything large is not ours and is ignored.
+        const m = rawMeta && rawMeta.length < 1024 ? JSON.parse(rawMeta) : null;
         if (m && typeof m === 'object' && !Array.isArray(m)) {
           if (typeof m.persistAskedAt === 'number') meta.persistAskedAt = m.persistAskedAt;
           if (
@@ -269,6 +271,18 @@
         );
       } catch {
         record('error');
+      }
+    }
+
+    /**
+     * The stored text of the main key, read fresh and unchanged (for the "export saved file" button
+     * when the data could not be read). Read-only: never writes. null when unreadable.
+     */
+    function rawText() {
+      try {
+        return engine ? engine.read(STORAGE_KEY) : null;
+      } catch {
+        return null;
       }
     }
 
@@ -333,7 +347,15 @@
         const kind = readOnly;
         return Promise.reject(Object.assign(new Error(kind), { kind }));
       }
-      const text = JSON.stringify(payload);
+      let text;
+      try {
+        text = JSON.stringify(payload);
+      } catch {
+        // A payload that cannot be serialised (for example a circular reference) is a failed save,
+        // published like any other, never an exception thrown into the caller.
+        publish('unknown', 'failed');
+        return Promise.reject(Object.assign(new Error('unknown'), { kind: 'unknown' }));
+      }
       const has = !!payload && Array.isArray(payload.workouts) && payload.workouts.length > 0;
       return new Promise((res, rej) => {
         const w = { res, rej };
@@ -359,7 +381,7 @@
       return d;
     }
 
-    return { load: loadAll, loaded, save, status, subscribe };
+    return { load: loadAll, loaded, rawText, save, status, subscribe };
   }
 
   const api = {
@@ -375,14 +397,12 @@
 
   // ---- boot (browser only) ---------------------------------------------------------------------
   if (typeof document === 'undefined' || typeof window === 'undefined') return;
-  let domReady = document.readyState === 'complete';
-  const domWait = domReady
-    ? Promise.resolve()
-    : new Promise((r) =>
-        document.addEventListener('DOMContentLoaded', () => ((domReady = true), r()), {
-          once: true,
-        }),
-      );
+  const domWait =
+    document.readyState === 'complete'
+      ? Promise.resolve()
+      : new Promise((r) =>
+          document.addEventListener('DOMContentLoaded', () => r(), { once: true }),
+        );
 
   try {
     const store = createStore({
@@ -399,10 +419,16 @@
             status: store.status,
             subscribe: store.subscribe,
             loaded: store.loaded,
+            rawText: store.rawText,
           }),
         });
-        // The save-problem bar (index.html) shows load-time problems before the first visible frame.
-        if (window.hbSaveBarAttach) window.hbSaveBarAttach(window.HB.storage);
+        // Attach the save-problem bar now, so a load-time problem is on screen before hbStart removes
+        // hb-booting. A fault in the bar must never stop the app from booting.
+        try {
+          if (window.hbSaveBarAttach) window.hbSaveBarAttach(window.HB.storage);
+        } catch (e) {
+          console.error('Save bar error:', e);
+        }
         return domWait;
       })
       .then(() => window.hbStart())

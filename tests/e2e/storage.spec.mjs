@@ -262,7 +262,7 @@ test.describe('save-problem bar (AC2)', () => {
       persistSave();
     });
     await expect(page.locator(BAR)).toBeVisible();
-    const ex = page.locator(`${BAR} button`, { hasText: 'Export' });
+    const ex = page.locator(BAR).getByRole('button', { name: 'Export', exact: true });
     const eb = await ex.boundingBox();
     expect(eb.height).toBeGreaterThanOrEqual(48);
     const [dl] = await Promise.all([
@@ -286,6 +286,12 @@ test.describe('save-problem bar (AC2)', () => {
     const hdr = await page.locator('.wm-header').boundingBox();
     expect(hdr.y).toBeGreaterThanOrEqual(b.bottom - 1);
     await expect(page.locator('#wm-tick-0-1')).toBeVisible();
+    // A failed Retry changes the label but never the bar's size (nothing jumps under the thumb).
+    const first = page.locator(`${BAR} button`).first();
+    await first.click();
+    await expect(first).toHaveText('Still not saved');
+    expect(await box(page)).toEqual(b);
+    await expect(first).toHaveText('Retry', { timeout: 4000 });
     expect(await page.evaluate(() => localStorage.getItem('hb_active_workout'))).toContain(
       'Synthetic Plan',
     );
@@ -351,7 +357,10 @@ test.describe('load-time bars (AC2, principle 1)', () => {
       await page.waitForFunction(() => window.__first !== null);
       expect(await page.evaluate(() => window.__first)).toBe(true);
       await expect(page.locator(BAR)).toContainText(title);
-      await expect(page.locator(`${BAR} button:visible`)).toHaveText(['Export']);
+      await expect(page.locator(`${BAR} button:visible`)).toHaveText([
+        'Export saved file',
+        'Export',
+      ]);
       await page.evaluate(() => persistSave().catch(() => {}));
       expect(await page.evaluate(() => localStorage.getItem('vaultfit_v1'))).toBe(raw);
     });
@@ -366,7 +375,7 @@ test.describe('load-time bars (AC2, principle 1)', () => {
     await seedStorage(page, { vaultfit_v1: raw, hb_seen_guide: '1' });
     await page.goto(siteURL + 'index.html');
     await expect(page.locator(BAR)).toContainText('Saving is not working');
-    await expect(page.locator(`${BAR} button:visible`)).toHaveText(['Export']);
+    await expect(page.locator(`${BAR} button:visible`)).toHaveText(['Export saved file', 'Export']);
     expect(await page.evaluate(() => localStorage.getItem('vaultfit_v1'))).toBe(raw);
   });
 });
@@ -399,5 +408,102 @@ test.describe('persist() (AC3)', () => {
     await page.evaluate(() => persistSave().catch(() => {}));
     await page.waitForTimeout(100);
     expect(await page.evaluate(() => window.__persistCalls)).toBe(1);
+  });
+});
+
+test.describe('T5b review fixes', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+
+  test('Export saved file downloads the stored text exactly and writes nothing', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    const raw = '{"workouts": [oops, "keep me"';
+    await seedStorage(page, { vaultfit_v1: raw, hb_seen_guide: '1' });
+    await page.goto(siteURL + 'index.html');
+    const btn = page.locator(`${BAR} button`, { hasText: 'Export saved file' });
+    const bb = await btn.boundingBox();
+    expect(bb.height).toBeGreaterThanOrEqual(48);
+    const [dl] = await Promise.all([
+      page.waitForEvent('download'),
+      page.touchscreen.tap(bb.x + bb.width * 0.85, bb.y + bb.height / 2),
+    ]);
+    expect(readFileSync(await dl.path(), 'utf8')).toBe(raw);
+    expect(await page.evaluate(() => localStorage.getItem('vaultfit_v1'))).toBe(raw);
+  });
+
+  test('keyboard: after a successful Retry focus is not on <body> and the alert has no double full stop', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await openWorkout(page, siteURL);
+    await setFault(page, { main: true });
+    await page.evaluate(() => persistSave().catch(() => {}));
+    await expect(page.locator(BAR)).toBeVisible();
+    expect(await page.locator('[role=alert]').textContent()).not.toContain('..');
+    await page.locator(`${BAR} button`).first().focus();
+    await setFault(page, { main: false });
+    await page.keyboard.press('Enter');
+    await expect(page.locator(BAR)).toContainText('Everything is saved');
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
+    await expect(page.locator(BAR)).toBeHidden({ timeout: 6000 });
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
+    expect(await page.locator('[role=alert]').textContent()).toBe('');
+  });
+
+  test('a storage script that arrives late: app visible after the failsafe, no write until it loads', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    const raw = JSON.stringify(seedData());
+    await page.route('**/src/hb-storage.js', async (route) => {
+      await new Promise((r) => setTimeout(r, 2500));
+      await route.continue();
+    });
+    await seedStorage(page, { vaultfit_v1: raw, hb_seen_guide: '1' });
+    await page.goto(siteURL + 'index.html', { waitUntil: 'commit' });
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.classList.contains('hb-booting')), {
+        timeout: 2200,
+      })
+      .toBe(false);
+    expect(
+      await page.evaluate(() =>
+        persistSave().then(
+          () => 'saved',
+          () => 'rejected',
+        ),
+      ),
+    ).toBe('rejected');
+    expect(await page.evaluate(() => localStorage.getItem('vaultfit_v1'))).toBe(raw);
+    await page.waitForFunction(() => state.workouts.length === 149, null, { timeout: 8000 });
+    await expect(page.locator(BAR)).toBeHidden();
+    expect(
+      await page.evaluate(() =>
+        persistSave().then(
+          () => 'saved',
+          () => 'rejected',
+        ),
+      ),
+    ).toBe('saved');
+  });
+
+  test('at 200% text the inline bar falls back to the row layout and nothing is clipped', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await openWorkout(page, siteURL, { active: true });
+    await page.evaluate(() => (document.documentElement.style.fontSize = '32px'));
+    await setFault(page, { wm: true });
+    await page.locator('#wm-tick-0-1').click();
+    await expect(page.locator(BAR)).toContainText('Workout not saved yet');
+    const r = await page.locator(BAR).evaluate((e) => ({
+      clipped: e.scrollHeight > e.clientHeight + 1,
+      btn: e.querySelector('button:not([hidden])').getBoundingClientRect().toJSON(),
+      h: e.getBoundingClientRect().height,
+    }));
+    expect(r.clipped).toBe(false);
+    expect(r.btn.right).toBeLessThanOrEqual(390);
+    expect(r.h).toBeLessThanOrEqual(844 * 0.4 + 1);
   });
 });
