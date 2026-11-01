@@ -6738,7 +6738,7 @@ function wmPersist() {
       planCtx: mLoadedPlanCtx,
     };
     localStorage.setItem(WM_KEY, JSON.stringify(toSave));
-  } catch(e) {}
+  } catch(e) { if (window.hbSaveBarWmFailed) window.hbSaveBarWmFailed(); }
 }
 
 function wmRestoreIfActive() {
@@ -7265,7 +7265,170 @@ if (screen.orientation && screen.orientation.lock) {
   window.screen.lockOrientation('portrait');
 }
 // ─── INIT ───
-// hbStart runs once, called by src/boot.js after the saved data is loaded (or by hbBootFailed).
+// ─── SAVE-PROBLEM BAR (T5b) ───
+// Spec: docs/design/write-failure-banner.md. Fixed strings only, set with textContent; the raw
+// exception message is never shown. The store (src/hb-storage.js) publishes; this renders.
+(function () {
+  const COPY = {
+    notSaved: 'Not saved. Keep HomeBody open.',
+    body: {
+      quota: 'HomeBody is out of space in this browser. Tap Export to keep a copy of everything.',
+      unavailable: 'This browser is stopping HomeBody from saving. Tap Export to keep a copy of everything.',
+      unknown: 'Something stopped HomeBody saving. Tap Retry, or Export to keep a copy.',
+    },
+    saved: ['Saved', 'Everything is saved on this device.'],
+    wm: ['Workout not saved yet', 'Keep HomeBody open. Your sets are on screen. Finish as normal and it saves again.'],
+    corrupt: ['Saved data could not be read', "It has not been changed. Saving is paused so nothing overwrites it. Don't delete HomeBody or clear its data."],
+    future: ['Saved by a newer version', 'Your history is untouched. Saving is paused so nothing is lost. Close and reopen HomeBody to get the newer version.'],
+    unavailable: ['Saving is not working', "This browser is blocking HomeBody's saved data, so nothing new will be kept. Nothing has been deleted. Close and reopen HomeBody."],
+  };
+  const root = document.documentElement;
+  const css = document.createElement('style');
+  css.textContent =
+    '#hb-save{position:fixed;top:0;left:0;right:0;z-index:10000;box-sizing:border-box;padding:max(10px,env(safe-area-inset-top)) 12px 10px;background:var(--surface);color:var(--text);border-bottom:2px solid var(--danger);box-shadow:0 8px 32px rgba(0,0,0,0.8),0 2px 8px rgba(0,0,0,0.4);max-height:40vh;max-height:40dvh;overflow-y:auto;overscroll-behavior:contain;opacity:0;visibility:hidden;transition:opacity 150ms}' +
+    '#hb-save.hb-on{opacity:1;visibility:visible}' +
+    '#hb-save.hb-ok{border-bottom-color:var(--signal)}#hb-save.hb-warn{border-bottom-color:var(--warning)}' +
+    '#hb-save .hb-in{max-width:520px;margin:0 auto}' +
+    '#hb-save .hb-h{display:flex;gap:10px;align-items:flex-start}' +
+    '#hb-save .hb-txt{flex:1 1 auto;min-width:0}' +
+    '#hb-save .hb-mk{flex:0 0 auto;width:20px;height:20px;box-sizing:border-box;margin-top:1px;display:flex;align-items:center;justify-content:center;font:700 13px Oswald,sans-serif}' +
+    '#hb-save .hb-mk.hb-bad{border:2px solid var(--danger);border-radius:50%;color:var(--danger)}' +
+    '#hb-save .hb-mk.hb-pause{width:12px;height:12px;margin:5px 4px 0;background:var(--warning);transform:rotate(45deg)}' +
+    '#hb-save .hb-mk.hb-tick{color:var(--signal);font-size:18px}' +
+    '#hb-save .hb-t{font-family:Oswald,sans-serif;font-weight:700;font-size:1rem}' +
+    '#hb-save .hb-b{font-family:Inter,sans-serif;font-size:0.85rem;line-height:1.4;margin-top:2px}' +
+    '#hb-save .hb-r{display:flex;gap:8px;margin-top:10px;position:sticky;bottom:-10px;background:var(--surface);padding:0 0 10px;margin-bottom:-10px}' +
+    '#hb-save .hb-r button{flex:1 1 0;min-height:48px;min-width:96px}' +
+    '#hb-save.hb-inline .hb-in{display:flex;gap:10px;align-items:center}' +
+    '#hb-save.hb-inline .hb-h{flex:1 1 auto;min-width:0;align-items:center}' +
+    '#hb-save.hb-inline .hb-r{margin:0;position:static;padding:0;flex:0 0 auto}' +
+    '#hb-save button[hidden]{display:none}#hb-save button[aria-disabled=true]{pointer-events:none}' +
+    '#hb-save button:focus-visible{outline:2px solid var(--text);outline-offset:2px}' +
+    'html.hb-save-on :is(.app,.wm-overlay,.modal-overlay,.show-workout-overlay,.show-wkt-overlay,#m-ex-sheet,body > [style*="position:fixed"][style*="inset:0"]){top:var(--hb-bar-h) !important}' +
+    'html.hb-save-on .modal-sheet{max-height:calc(92vh - var(--hb-bar-h))}' +
+    '.hb-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}' +
+    '@media (prefers-reduced-motion:reduce){#hb-save{transition:none}}';
+  document.head.appendChild(css);
+  root.style.setProperty('--hb-bar-h', '0px');
+
+  const el = (tag, cls, parent) => { const e = document.createElement(tag); if (cls) e.className = cls; if (parent) parent.appendChild(e); return e; };
+  const bar = el('div'); bar.id = 'hb-save'; bar.setAttribute('role', 'region'); bar.setAttribute('aria-label', 'Saving'); bar.inert = true;
+  const inner = el('div', 'hb-in', bar), head = el('div', 'hb-h', inner);
+  const mk = el('span', 'hb-mk', head); mk.setAttribute('aria-hidden', 'true');
+  const txt = el('div', 'hb-txt', head), tEl = el('div', 'hb-t', txt), bEl = el('div', 'hb-b', txt);
+  const row = el('div', 'hb-r', inner);
+  const mkBtn = (cls) => { const b = el('button', cls, row); b.type = 'button'; return b; };
+  const retryB = mkBtn('btn-secondary'), exportB = mkBtn('btn-primary'), doneB = mkBtn('btn-secondary');
+  exportB.textContent = 'Export'; doneB.textContent = 'Done';
+  document.body.insertBefore(bar, document.body.firstChild);
+  const alertEl = el('div', 'hb-sr'); alertEl.setAttribute('role', 'alert');     // once per episode
+  const statusEl = el('div', 'hb-sr'); statusEl.setAttribute('role', 'status');  // polite updates
+  document.body.insertBefore(alertEl, bar); document.body.insertBefore(statusEl, bar);
+
+  // S: what has gone wrong. load: null|'corrupt'|'future'|'unavailable'; main: null|kind; phase: how the
+  // main failure is going; wm: the active-workout save failed; ok: show "Saved".
+  const S = { load: null, main: null, phase: 'failed', wm: false, ok: false };
+  let userRetry = false, shownNow = false, alerted = false, lastH = 0, okTimer = 0, stillTimer = 0, wmFlag = false, prevHold = false;
+  const wmOpen = () => !!document.getElementById('wm-overlay');
+  const hold = () => !!(S.main || (S.wm && wmOpen()));
+  window.hbSaveHold = hold;  // the update card and About Update/Reload wait while this is true
+
+  function view() {
+    if (S.load) return { title: COPY[S.load][0], body: COPY[S.load][1], warn: true, btns: ['export'], inline: true };
+    if (S.main) {
+      const busy = S.phase === 'retrying' || S.phase === 'busy';
+      return { title: COPY.notSaved, body: COPY.body[S.main] || COPY.body.unknown, bad: true, btns: ['retry', 'export'],
+        retry: busy ? 'Saving…' : S.phase === 'still' ? 'Still not saved' : 'Retry', retryOff: busy || S.phase === 'still' };
+    }
+    if (S.wm && wmOpen()) return { title: COPY.wm[0], body: COPY.wm[1], bad: true, btns: ['retry'], inline: true,
+      retry: S.phase === 'busy' ? 'Saving…' : S.phase === 'still' ? 'Still not saved' : 'Retry', retryOff: S.phase === 'busy' || S.phase === 'still' };
+    if (S.ok) return { title: COPY.saved[0], body: COPY.saved[1], ok: true, btns: ['done'] };
+    return null;
+  }
+  function scrollBox() { return document.getElementById('wm-body') || document.querySelector('.page.active'); }
+  function applyHeight() {
+    const h = shownNow ? Math.ceil(bar.getBoundingClientRect().height) : 0;
+    if (h === lastH) return;
+    const d = h - lastH; lastH = h;
+    root.style.setProperty('--hb-bar-h', h + 'px');
+    root.classList.toggle('hb-save-on', h > 0);
+    const sb = scrollBox(); if (sb) sb.scrollTop += d;  // content stays under the thumb
+  }
+  function render() {
+    const v = view();
+    if (!v) {
+      if (shownNow) {
+        shownNow = false; alerted = false; statusEl.textContent = '';
+        if (bar.contains(document.activeElement)) {
+          const t = (wmOpen() && document.querySelector('.wm-finish-btn')) || document.querySelector('.nav-tab.active');
+          if (t) t.focus({ preventScroll: true });
+        }
+        bar.classList.remove('hb-on'); bar.inert = true; applyHeight();
+      }
+    } else {
+      tEl.textContent = v.title; bEl.textContent = v.body;
+      bar.classList.toggle('hb-inline', !!v.inline);
+      bar.classList.toggle('hb-ok', !!v.ok); bar.classList.toggle('hb-warn', !!v.warn);
+      mk.className = 'hb-mk ' + (v.bad ? 'hb-bad' : v.warn ? 'hb-pause' : 'hb-tick');
+      mk.textContent = v.bad ? '!' : v.ok ? '✓' : '';
+      retryB.hidden = !v.btns.includes('retry'); exportB.hidden = !v.btns.includes('export'); doneB.hidden = !v.btns.includes('done');
+      if (v.retry) { retryB.textContent = v.retry; if (v.retryOff) retryB.setAttribute('aria-disabled', 'true'); else retryB.removeAttribute('aria-disabled'); }
+      if (!shownNow) {
+        shownNow = true; bar.inert = false; bar.classList.add('hb-on');
+        if (!alerted && !v.ok) { alerted = true; requestAnimationFrame(() => { if (shownNow) alertEl.textContent = v.title + '. ' + v.body; }); }
+      }
+      applyHeight();
+      if (v.ok) { clearTimeout(okTimer); okTimer = setTimeout(autoDone, 4000); }
+    }
+    const h = hold();
+    if (prevHold && !h) window.dispatchEvent(new StorageEvent('storage', { key: null })); // the update card re-checks
+    prevHold = h;
+  }
+  function autoDone() { if (bar.contains(document.activeElement)) { bar.addEventListener('focusout', autoDone, { once: true }); return; } done(); }
+  function done() { clearTimeout(okTimer); S.ok = false; render(); }
+  function say(t) { statusEl.textContent = ''; requestAnimationFrame(() => { statusEl.textContent = t; }); }
+  function becameSaved() { S.main = null; S.phase = 'failed'; if (!(S.wm && wmOpen())) { S.wm = false; S.ok = true; say(COPY.saved[0] + '. ' + COPY.saved[1]); } }
+
+  function onStore(st) {
+    if (userRetry || S.load) return;
+    if (st.state === 'retrying' || st.state === 'failed') {
+      S.ok = false; S.main = st.error || 'unknown'; S.phase = st.state === 'retrying' ? 'retrying' : 'failed';
+    } else if (st.state === 'idle' && S.main) becameSaved();
+    else return;
+    render();
+  }
+  window.hbSaveBarAttach = function (storage) {
+    const st = storage.status();
+    if (st.state === 'readonly') S.load = st.error;
+    else if (st.error) { S.main = st.error; S.phase = 'failed'; }
+    storage.subscribe(onStore);
+    render();
+  };
+  window.hbSaveBarLoad = function (reason) { S.load = reason; render(); };      // hbBootFailed: no store
+  window.hbSaveBarWmFailed = function () { wmFlag = true; if (userRetry) return; S.wm = true; S.ok = false; render(); };
+
+  async function doRetry() {
+    if (userRetry || retryB.getAttribute('aria-disabled') === 'true') return;
+    userRetry = true; clearTimeout(stillTimer); S.phase = 'busy'; render(); say('Saving…');
+    let ok = true;
+    if (wmOpen()) { wmFlag = false; try { wmPersist(); } catch (e) { wmFlag = true; } if (wmFlag) ok = false; }
+    try { await persistSave(); } catch (e) { ok = false; S.main = S.main || ((window.HB && window.HB.storage.status().error) || 'unknown'); }
+    userRetry = false;
+    if (ok) { S.wm = false; becameSaved(); }
+    else { S.phase = 'still'; if (wmOpen() && !S.main) S.wm = true; say('Still not saved'); stillTimer = setTimeout(() => { S.phase = 'failed'; render(); }, 2000); }
+    render();
+  }
+  retryB.addEventListener('click', doRetry);
+  exportB.addEventListener('click', () => { try { mExportData(); } catch (e) { /* export has its own toast */ } });
+  doneB.addEventListener('click', done);
+  new MutationObserver(() => {   // the workout layer opened or closed
+    if (S.wm && !wmOpen() && !S.main) { S.wm = false; S.ok = shownNow; }
+    if (shownNow || S.wm || S.main) render();
+  }).observe(document.body, { childList: true });
+  if (window.ResizeObserver) new ResizeObserver(() => { if (shownNow) applyHeight(); }).observe(bar);
+})();
+
+// hbStart runs once, called by src/hb-storage.js after the saved data is loaded (or by hbBootFailed).
 let hbStarted = false;
 function hbStart() {
   if (hbStarted) return;
@@ -7285,6 +7448,7 @@ function hbStart() {
 // The module failed to load or run: start on empty state. window.HB stays unset, so persistSave()
 // rejects and nothing is ever written over the stored data.
 function hbBootFailed() {
+  if (window.hbSaveBarLoad) window.hbSaveBarLoad('unavailable'); // state 8, before the first visible frame
   hbStart();
 }
 
@@ -7851,7 +8015,7 @@ function hbWorkoutActive() {
   }
 
   // ── show / hide ──
-  const busy = () => hbWorkoutActive() || !!$('wm-overlay');
+  const busy = () => hbWorkoutActive() || !!$('wm-overlay') || !!(window.hbSaveHold && window.hbSaveHold());
   function show() {
     const c = COPY[kind];
     box.inert = false;
@@ -7951,7 +8115,7 @@ function hbWorkoutActive() {
   // ── actions ──
   function onGo() {
     if (busyOn) return;                              // aria-disabled: Enter/Space must not re-fire
-    if (hbWorkoutActive()) { evaluate(); return; }   // re-check at tap time
+    if (hbWorkoutActive() || (window.hbSaveHold && window.hbSaveHold())) { evaluate(); return; }   // re-check at tap time
     if (kind === 'reload') { setBusy(true); location.reload(); return; }
     const w = (reg && reg.waiting) || waiting;
     if (!w) { kind = null; evaluate(); return; }

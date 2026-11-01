@@ -143,3 +143,261 @@ test.describe('cold start (AC5)', () => {
     expect(median).toBeLessThan(2500);
   });
 });
+
+// ---- T5b: save-problem bar (docs/design/write-failure-banner.md) and persist() ---------------
+
+const ACTIVE = readFileSync(join(SYNTHETIC_DIR, 'hb_active_workout.json'), 'utf8');
+const BAR = '#hb-save';
+
+/** Make setItem throw QuotaExceededError for the main blob and/or the active workout on demand. */
+async function injectFaults(page) {
+  await page.addInitScript(() => {
+    window.__fail = { main: false, wm: false };
+    const orig = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k, v) {
+      if (
+        (k === 'vaultfit_v1' && window.__fail.main) ||
+        (k === 'hb_active_workout' && window.__fail.wm)
+      ) {
+        throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+      }
+      return orig.call(this, k, v);
+    };
+  });
+}
+const setFault = (page, f) => page.evaluate((x) => Object.assign(window.__fail, x), f);
+const box = (page) =>
+  page.locator(BAR).evaluate((e) => {
+    const r = e.getBoundingClientRect();
+    return { top: r.top, bottom: r.bottom, height: r.height };
+  });
+
+async function openWorkout(page, siteURL, { active = false } = {}) {
+  await injectFaults(page);
+  await seedStorage(page, {
+    vaultfit_v1: JSON.stringify(seedData()),
+    hb_seen_guide: '1',
+    ...(active ? { hb_active_workout: ACTIVE } : {}),
+  });
+  await page.goto(siteURL + 'index.html');
+  await page.waitForFunction(
+    () => typeof state !== 'undefined' && document.readyState === 'complete',
+  );
+}
+
+test.describe('save-problem bar (AC2)', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+
+  test('Finish with a quota fault: bar with Retry and Export, nothing under it, Retry cycle, then Saved @smoke', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await openWorkout(page, siteURL, { active: true });
+    await setFault(page, { main: true });
+    const before = await page.evaluate(() => state.workouts.length);
+    await page.locator('.wm-finish-btn').click();
+    await page.getByRole('button', { name: 'Save Workout' }).click();
+    await expect(page.locator(BAR)).toBeVisible();
+    await expect(page.locator(BAR)).toContainText('Not saved. Keep HomeBody open.');
+    await expect(page.locator(BAR)).toContainText('out of space in this browser');
+    await expect(page.locator(`${BAR} button:visible`)).toHaveText(['Retry', 'Export']);
+    expect(await page.evaluate(() => state.workouts.length)).toBe(before + 1);
+    await expect(page.locator('[role=alert]')).toHaveText(/Not saved\. Keep HomeBody open\./);
+
+    // Nothing is under the bar: every hit inside its rectangle is the bar.
+    const b = await box(page);
+    const strays = await page.evaluate((r) => {
+      const bar = document.getElementById('hb-save');
+      const bad = [];
+      for (let y = 4; y < r.bottom; y += 10)
+        for (let x = 4; x < innerWidth; x += 10)
+          if (!bar.contains(document.elementFromPoint(x, y))) bad.push([x, y]);
+      return bad;
+    }, b);
+    expect(strays).toEqual([]);
+    expect(await page.evaluate(() => getComputedStyle(document.querySelector('.app')).top)).toBe(
+      `${Math.ceil(b.height)}px`,
+    );
+
+    // Retry while still faulted: busy, then "Still not saved", same size, alert not rewritten.
+    const alertText = await page.locator('[role=alert]').textContent();
+    const retry = page.locator(`${BAR} button`).first();
+    const rb = await retry.boundingBox();
+    await page.touchscreen.tap(rb.x + rb.width * 0.85, rb.y + rb.height / 2);
+    await expect(retry).toHaveText('Still not saved');
+    expect(await box(page)).toEqual(b);
+    expect(await page.locator('[role=alert]').textContent()).toBe(alertText);
+    await expect(retry).toHaveText('Retry', { timeout: 4000 });
+
+    // Clear the fault: Retry saves, bar says Saved, the blob holds the workout, and it goes away.
+    await setFault(page, { main: false });
+    await page.touchscreen.tap(rb.x + rb.width * 0.85, rb.y + rb.height / 2);
+    await expect(page.locator(BAR)).toContainText('Everything is saved on this device.');
+    expect(
+      await page.evaluate(() => JSON.parse(localStorage.getItem('vaultfit_v1')).workouts.length),
+    ).toBe(before + 1);
+    await expect(page.locator(BAR)).toBeHidden({ timeout: 6000 });
+    expect(
+      await page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--hb-bar-h').trim(),
+      ),
+    ).toBe('0px');
+    await page.reload();
+    expect(await page.evaluate(() => state.workouts.length)).toBe(before + 1);
+  });
+
+  test('Export by real touch downloads the unsaved workout and leaves the bar up', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await openWorkout(page, siteURL);
+    await setFault(page, { main: true });
+    await page.evaluate(() => {
+      state.workouts.push({
+        id: 424242,
+        name: 'Unsaved Probe',
+        date: new Date().toISOString(),
+        exercises: [],
+      });
+      persistSave();
+    });
+    await expect(page.locator(BAR)).toBeVisible();
+    const ex = page.locator(`${BAR} button`, { hasText: 'Export' });
+    const eb = await ex.boundingBox();
+    expect(eb.height).toBeGreaterThanOrEqual(48);
+    const [dl] = await Promise.all([
+      page.waitForEvent('download'),
+      page.touchscreen.tap(eb.x + eb.width * 0.85, eb.y + eb.height / 2),
+    ]);
+    expect(readFileSync(await dl.path(), 'utf8')).toContain('Unsaved Probe');
+    await expect(page.locator(BAR)).toContainText('Not saved. Keep HomeBody open.');
+  });
+
+  test('mid-workout: Retry only, the workout header stays visible, sets still tick, and Saved needs every write', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await openWorkout(page, siteURL, { active: true });
+    await setFault(page, { wm: true });
+    await page.locator('#wm-tick-0-1').click();
+    await expect(page.locator(BAR)).toContainText('Workout not saved yet');
+    await expect(page.locator(`${BAR} button:visible`)).toHaveText(['Retry']);
+    const b = await box(page);
+    const hdr = await page.locator('.wm-header').boundingBox();
+    expect(hdr.y).toBeGreaterThanOrEqual(b.bottom - 1);
+    await expect(page.locator('#wm-tick-0-1')).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem('hb_active_workout'))).toContain(
+      'Synthetic Plan',
+    );
+
+    // Both writes failed (main via persistSave), then only the main one recovers: not Saved.
+    await setFault(page, { main: true });
+    await page.evaluate(() => persistSave().catch(() => {}));
+    await expect(page.locator(BAR)).toContainText('Not saved. Keep HomeBody open.');
+    await setFault(page, { main: false });
+    await page.locator(`${BAR} button`).first().click();
+    await expect(page.locator(BAR)).not.toContainText('Everything is saved');
+    await expect(page.locator(BAR)).toContainText(/Workout not saved yet|Not saved/);
+    // The workout can still be finished: the user is never blocked.
+    await setFault(page, { wm: false });
+    await expect(page.locator(`${BAR} button`).first()).toHaveText('Retry', { timeout: 4000 });
+    await page.locator(`${BAR} button`).first().click();
+    await expect(page.locator(BAR)).toBeHidden({ timeout: 7000 });
+  });
+
+  test('a save problem holds the update card and About Update (T4 widening)', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await openWorkout(page, siteURL);
+    await setFault(page, { main: true });
+    await page.evaluate(() => persistSave().catch(() => {}));
+    await expect(page.locator(BAR)).toBeVisible();
+    expect(await page.evaluate(() => window.hbSaveHold())).toBe(true);
+    await setFault(page, { main: false });
+    await page.evaluate(() => persistSave().catch(() => {}));
+    await expect(page.locator(BAR)).toContainText('Everything is saved');
+    expect(await page.evaluate(() => window.hbSaveHold())).toBe(false);
+  });
+});
+
+test.describe('load-time bars (AC2, principle 1)', () => {
+  const cases = [
+    ['corrupt', '{"workouts": [oops', 'Saved data could not be read'],
+    [
+      'future',
+      JSON.stringify({ workouts: [{ id: 1 }], schemaVersion: 99 }),
+      'Saved by a newer version',
+    ],
+  ];
+  for (const [name, raw, title] of cases) {
+    test(`${name} blob: bar in the first visible frame, Export only, blob untouched`, async ({
+      appPage: page,
+      siteURL,
+    }) => {
+      await page.addInitScript(() => {
+        window.__first = null;
+        const tick = () => {
+          const b = document.body;
+          if (b && getComputedStyle(b).visibility !== 'hidden') {
+            const bar = document.getElementById('hb-save');
+            window.__first = !!bar && bar.classList.contains('hb-on');
+          } else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+      await seedStorage(page, { vaultfit_v1: raw, hb_seen_guide: '1' });
+      await page.goto(siteURL + 'index.html');
+      await page.waitForFunction(() => window.__first !== null);
+      expect(await page.evaluate(() => window.__first)).toBe(true);
+      await expect(page.locator(BAR)).toContainText(title);
+      await expect(page.locator(`${BAR} button:visible`)).toHaveText(['Export']);
+      await page.evaluate(() => persistSave().catch(() => {}));
+      expect(await page.evaluate(() => localStorage.getItem('vaultfit_v1'))).toBe(raw);
+    });
+  }
+
+  test('boot failure shows "Saving is not working" and never writes', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await page.route('**/src/hb-storage.js', (route) => route.abort());
+    const raw = JSON.stringify({ workouts: [{ id: 1, name: 'keep', exercises: [] }] });
+    await seedStorage(page, { vaultfit_v1: raw, hb_seen_guide: '1' });
+    await page.goto(siteURL + 'index.html');
+    await expect(page.locator(BAR)).toContainText('Saving is not working');
+    await expect(page.locator(`${BAR} button:visible`)).toHaveText(['Export']);
+    expect(await page.evaluate(() => localStorage.getItem('vaultfit_v1'))).toBe(raw);
+  });
+});
+
+test.describe('persist() (AC3)', () => {
+  test('requested once after the first workout save; result readable via status()', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await page.addInitScript(() => {
+      window.__persistCalls = Number(sessionStorage.getItem('pc') || 0);
+      if (navigator.storage) {
+        navigator.storage.persist = async () => {
+          window.__persistCalls++;
+          sessionStorage.setItem('pc', String(window.__persistCalls));
+          return true;
+        };
+      }
+    });
+    await seedStorage(page, { vaultfit_v1: JSON.stringify(seedData()), hb_seen_guide: '1' });
+    await page.goto(siteURL + 'index.html');
+    await page.waitForFunction(() => typeof state !== 'undefined' && !!window.HB);
+    expect(await page.evaluate(() => window.__persistCalls)).toBe(0);
+    await page.evaluate(() => persistSave().catch(() => {}));
+    await expect.poll(() => page.evaluate(() => window.__persistCalls)).toBe(1);
+    await expect.poll(() => page.evaluate(() => HB.storage.status().persistGranted)).toBe(true);
+    expect(await page.evaluate(() => HB.storage.status().persistAsked)).toBe(true);
+    await page.reload();
+    await page.waitForFunction(() => !!window.HB);
+    await page.evaluate(() => persistSave().catch(() => {}));
+    await page.waitForTimeout(100);
+    expect(await page.evaluate(() => window.__persistCalls)).toBe(1);
+  });
+});

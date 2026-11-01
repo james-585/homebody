@@ -70,7 +70,9 @@
           storage.setItem(key, text);
           return Promise.resolve();
         } catch (e) {
-          return Promise.reject(e);
+          const p = Promise.reject(e);
+          p.syncError = e; // lets the store announce a failure inside the calling tick
+          return p;
         }
       },
     };
@@ -86,6 +88,7 @@
 
   const STORAGE_KEY = 'vaultfit_v1';
   const LEGACY_KEYS = ['homebody_v1', 'homebody_v0', 'vaultfit_v0'];
+  const META_KEY = 'hb_storage_meta'; // additive sidecar: { persistAskedAt, persistGranted }
 
   /** Only the kind of failure is exposed, never the raw exception text. */
   function classifyError(e) {
@@ -101,7 +104,7 @@
 
   /**
    * @param {{openEngines: Array<() => object>, migrations?: Array, current?: number,
-   *          retryDelayMs?: number, setTimer?: Function}} opts
+   *          retryDelayMs?: number, setTimer?: Function, now?: () => number, nav?: object}} opts
    *   openEngines: ordered factories; the first that opens and reads wins.
    */
   function createStore({
@@ -110,17 +113,24 @@
     current = CURRENT_SCHEMA,
     retryDelayMs = 250,
     setTimer = (fn, ms) => setTimeout(fn, ms),
+    now = () => 0,
+    nav = null, // navigator-like { storage: { persist, persisted } }; never required
   }) {
     let engine = null;
     let doc = null; // the loaded document (a plain object), or null before load
     let error = null; // null | { kind }
+    let phase = 'idle'; // 'idle' | 'retrying' | 'failed' | 'readonly'
+    let meta = {}; // the sidecar, copied field by field
+    let asked = false; // persist() requested (this session or an earlier one)
+    let persisted = null; // navigator.storage.persisted(), refreshed after boot
     let readOnly = null; // null | 'corrupt' | 'future' | 'unavailable'
     let inflight = false;
     let queued = null; // { text, waiters }
     const subs = new Set();
 
-    const publish = (kind) => {
+    const publish = (kind, state) => {
       error = kind ? { kind } : null;
+      phase = state || (kind ? 'failed' : 'idle');
       for (const fn of [...subs]) {
         try {
           fn(status());
@@ -133,10 +143,12 @@
     function status() {
       const s = {
         engine: engine ? engine.name : 'none',
-        persisted: null,
-        persistAsked: false,
+        state: phase,
+        persisted,
+        persistAsked: asked,
         lastBackupAt: null,
       };
+      if (meta.persistGranted !== undefined) s.persistGranted = meta.persistGranted;
       if (error) s.error = error.kind;
       return s;
     }
@@ -155,7 +167,7 @@
       if (!engine) {
         doc = {};
         readOnly = 'unavailable';
-        publish('unavailable');
+        publish('unavailable', 'readonly');
         return doc;
       }
 
@@ -165,7 +177,7 @@
       } catch {
         doc = {};
         readOnly = 'unavailable';
-        publish('unavailable');
+        publish('unavailable', 'readonly');
         return doc;
       }
 
@@ -198,12 +210,66 @@
       if (!r.ok) {
         doc = {};
         readOnly = r.reason;
-        publish(r.reason);
+        publish(r.reason, 'readonly');
         return doc;
       }
       doc = r.doc;
       if (adoptFailed) publish(adoptFailed);
       return doc;
+    }
+
+    // Called once the document is loaded. Nothing here is awaited on the boot path.
+    function afterLoad() {
+      try {
+        const m = JSON.parse(engine.read(META_KEY) || 'null');
+        if (m && typeof m === 'object' && !Array.isArray(m)) {
+          if (typeof m.persistAskedAt === 'number') meta.persistAskedAt = m.persistAskedAt;
+          if (
+            ['unsupported', 'error'].includes(m.persistGranted) ||
+            typeof m.persistGranted === 'boolean'
+          )
+            meta.persistGranted = m.persistGranted;
+          asked = meta.persistAskedAt !== undefined;
+        }
+      } catch {
+        /* unreadable sidecar: treat as not asked */
+      }
+      try {
+        if (nav && nav.storage && typeof nav.storage.persisted === 'function')
+          nav.storage.persisted().then(
+            (v) => (persisted = !!v),
+            () => {},
+          );
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // Ask the browser for persistent storage once, after the first successful save that holds a
+    // workout. The result is kept in the sidecar key; a failed sidecar write is not an app error.
+    function askPersist() {
+      asked = true;
+      const record = (granted) => {
+        meta = { persistAskedAt: now(), persistGranted: granted };
+        if (granted === true) persisted = true;
+        try {
+          Promise.resolve(engine.write(META_KEY, JSON.stringify(meta))).catch(() => {});
+        } catch {
+          /* ignore */
+        }
+      };
+      try {
+        if (!nav || !nav.storage || typeof nav.storage.persist !== 'function') {
+          record('unsupported');
+          return;
+        }
+        nav.storage.persist().then(
+          (g) => record(!!g),
+          () => record('error'),
+        );
+      } catch {
+        record('error');
+      }
     }
 
     /** The document that was loaded (a plain object; {} when nothing is stored). */
@@ -214,7 +280,9 @@
       try {
         return Promise.resolve(engine.write(STORAGE_KEY, text));
       } catch (e) {
-        return Promise.reject(e);
+        const p = Promise.reject(e);
+        p.syncError = e;
+        return p;
       }
     }
 
@@ -227,15 +295,26 @@
           kind ? w.rej(Object.assign(new Error(kind), { kind })) : w.res();
         inflight = false;
         publish(kind);
+        if (!kind && job.has && !asked) askPersist();
         if (queued) pump();
       };
-      writeOnce(job.text).then(
+      // First failure: announce 'retrying' now (synchronously when the engine fails in the call).
+      const announce = (e) => {
+        if (job.announced) return;
+        job.announced = true;
+        publish(classifyError(e), 'retrying');
+      };
+      const first = writeOnce(job.text);
+      if (first.syncError) announce(first.syncError);
+      first.then(
         () => finish(null),
-        () => {
+        (e) => {
+          announce(e);
           // retry once, with the newest payload if one arrived meanwhile
           setTimer(() => {
             if (queued) {
               job.text = queued.text;
+              job.has = queued.has;
               job.waiters.push(...queued.waiters);
               queued = null;
             }
@@ -255,13 +334,15 @@
         return Promise.reject(Object.assign(new Error(kind), { kind }));
       }
       const text = JSON.stringify(payload);
+      const has = !!payload && Array.isArray(payload.workouts) && payload.workouts.length > 0;
       return new Promise((res, rej) => {
         const w = { res, rej };
         if (queued) {
           queued.text = text;
+          queued.has = has;
           queued.waiters.push(w);
         } else {
-          queued = { text, waiters: [w] };
+          queued = { text, has, waiters: [w] };
         }
         if (!inflight) pump();
       });
@@ -272,7 +353,13 @@
       return () => subs.delete(fn);
     }
 
-    return { load, loaded, save, status, subscribe };
+    async function loadAll() {
+      const d = await load();
+      if (engine) afterLoad();
+      return d;
+    }
+
+    return { load: loadAll, loaded, save, status, subscribe };
   }
 
   const api = {
@@ -298,7 +385,11 @@
       );
 
   try {
-    const store = createStore({ openEngines: [() => createLocalEngine()] });
+    const store = createStore({
+      openEngines: [() => createLocalEngine()],
+      now: () => Date.now(),
+      nav: window.navigator,
+    });
     store
       .load() // localStorage resolves in microtasks; nothing slow is awaited here
       .then(() => {
@@ -310,6 +401,8 @@
             loaded: store.loaded,
           }),
         });
+        // The save-problem bar (index.html) shows load-time problems before the first visible frame.
+        if (window.hbSaveBarAttach) window.hbSaveBarAttach(window.HB.storage);
         return domWait;
       })
       .then(() => window.hbStart())

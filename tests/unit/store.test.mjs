@@ -88,7 +88,7 @@ test('forced quota: one retry, error published, a later save succeeds and clears
   const store = mk(fs);
   await store.load();
   const seen = [];
-  store.subscribe((s) => seen.push(s.error ?? null));
+  store.subscribe((s) => seen.push(s.state + ':' + (s.error ?? '-')));
   let attempts = 0;
   fs.failWrites = () => (attempts++, quotaError());
   await assert.rejects(store.save({ workouts: [1] }), { kind: 'quota' });
@@ -99,7 +99,7 @@ test('forced quota: one retry, error published, a later save succeeds and clears
   await store.save({ workouts: [1, 2] });
   assert.equal(store.status().error, undefined);
   assert.deepEqual(JSON.parse(fs.getItem(STORAGE_KEY)).workouts, [1, 2]);
-  assert.deepEqual(seen, ['quota', null]);
+  assert.deepEqual(seen, ['retrying:quota', 'failed:quota', 'idle:-']);
 });
 
 test('interrupted write leaves the previous valid blob', async () => {
@@ -163,3 +163,75 @@ for (const [name, raw, reason] of [
     assert.deepEqual(fs.log, []);
   });
 }
+
+test('retrying is published synchronously inside the failing save() call', async () => {
+  const fs = new FakeStorage();
+  const store = mk(fs);
+  await store.load();
+  fs.failWrites = quotaError;
+  const seen = [];
+  store.subscribe((s) => seen.push(s.state));
+  const p = store.save({ workouts: [] });
+  assert.deepEqual(seen, ['retrying'], 'announced before save() returned');
+  await assert.rejects(p);
+});
+
+const nav = (persist) => ({ storage: { persist, persisted: async () => false } });
+const withWorkout = { workouts: [{ id: 1 }] };
+
+test('persist(): not asked on load or for an empty history; asked once after a workout save', async () => {
+  const fs = new FakeStorage();
+  let calls = 0;
+  const mkp = () => mk(fs, { now: () => 1234, nav: nav(async () => (calls++, true)) });
+  const a = mkp();
+  await a.load();
+  assert.equal(calls, 0);
+  await a.save({ workouts: [] });
+  assert.equal(calls, 0);
+  await a.save(withWorkout);
+  await a.save(withWorkout);
+  assert.equal(calls, 1);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(JSON.parse(fs.getItem('hb_storage_meta')), {
+    persistAskedAt: 1234,
+    persistGranted: true,
+  });
+  const b = mkp(); // a second store instance (a reload) must not ask again
+  await b.load();
+  assert.equal(b.status().persistAsked, true);
+  assert.equal(b.status().persistGranted, true);
+  await b.save(withWorkout);
+  assert.equal(calls, 1);
+});
+
+test('persist(): unsupported and error outcomes are recorded', async () => {
+  for (const [n, expected] of [
+    [null, 'unsupported'],
+    [nav(async () => Promise.reject(new Error('x'))), 'error'],
+    [nav(async () => false), false],
+  ]) {
+    const fs = new FakeStorage();
+    const store = mk(fs, { nav: n, now: () => 5 });
+    await store.load();
+    await store.save(withWorkout);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(JSON.parse(fs.getItem('hb_storage_meta')).persistGranted, expected);
+    assert.equal(store.status().persistGranted, expected);
+  }
+});
+
+test('persist() is not asked when the save fails, and a failing sidecar write is harmless', async () => {
+  const fs = new FakeStorage();
+  let calls = 0;
+  const store = mk(fs, { nav: nav(async () => (calls++, true)) });
+  await store.load();
+  fs.failWrites = quotaError;
+  await assert.rejects(store.save(withWorkout));
+  assert.equal(calls, 0);
+  fs.failKeys = ['hb_storage_meta']; // only the sidecar fails afterwards
+  fs.failWrites = quotaError;
+  await store.save(withWorkout);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(calls, 1);
+  assert.equal(store.status().error, undefined);
+});
