@@ -1,9 +1,20 @@
 # HomeBody design system (proposal for M2)
 
-Status: **Proposal, not approved.** Author: product-designer, 2026-11-03. Branch `claude/design-system-m2`.
+Status: **Proposal. Direction questions 1 to 4 decided by James on 2026-11-03, in chat (see Decisions); questions 5 and 6 still open.** Author: product-designer, 2026-11-03. Branch `claude/design-system-m2`.
 Source: the "HomeBody Premium Design" canvas (four dark boards: Train, Live workout, Rest timer, Progress, each with four accent options). This document is the design system that earlier specs call `docs/design/system.md`. Machine-readable values are in [tokens.json](tokens.json); every contrast figure below was computed from that file.
 Scope: docs only. Nothing here changes `index.html`, `src/`, `sw.js` or tests. Implementation is staged (section 7) and each stage needs its own task plan and human approval.
 Principles served: 2 (estimates labelled, safety copy visible), 5 (offline: no remote fonts or assets), 7 (logging speed: one tap per set at "same as last time"), and the accessibility rules in the product-designer brief.
+
+## Decisions (James, 2026-11-03, in chat)
+
+Relayed to product-designer by the coordinating session. Each stage still needs its own task plan and approval.
+
+1. **Accent: ship the four-colour picker** (ember, amber, green, blue, as on the canvas), not ember only. Ember is the default. The picker is part of the M2 token plan (sections 2.2 and 7.2).
+2. **Light theme: yes, as a full peer.** New installs follow the system setting; existing users keep their current choice (section 4).
+3. **Keep Oswald.** The timer and stepper jitter is fixed with fixed-width digit cells (section 2.3).
+4. **Before M2: stage A only** (token aliases, zero visual change), and only if the architect can fit it into an existing M1 task safely. Otherwise it is the first M2 task (section 7.2).
+
+Not yet decided: Q5 (kcal headline) and Q6 (FAB outside workouts), section 8.
 
 ---
 
@@ -63,7 +74,28 @@ The canvas offers four. One is active at a time; the light theme uses a deeper v
 | Green | `#5DBE8A` / `#0E0C0A` | `#2D7A50` / `#FFFFFF` | success (same value): "current" and "done" would look alike |
 | Blue | `#6AA7FF` / `#0E0C0A` | `#2F6BC4` / `#FFFFFF` | info (same value) |
 
-Recommendation: ship **ember only** in M2 and keep the `[data-accent]` structure, so a choice can be added later without rework. If a choice ships, offer ember and blue. When blue is active, info notices fall back to `--color-text` with the `i` marker. Green is not offered because "done" must never look like "current" (Q1).
+**Decided: all four ship as a user choice (Decision 1).** In light, amber's accent equals light `--color-warning` and `--color-data-2` (`#93590F`), green's equals light `--color-success`, and blue's equals light `--color-info` solid. Every accent passes every accent pair in both themes (measured, section 5.1, "Accent options"). The caveats below are rules the components must follow, so the picker never breaks "colour is never the only signal".
+
+**Rules for every accent**
+- Accent means **action or current**, never a state. State always has a marker shape (2.10) and words.
+- "Current" always has a shape cue as well as colour: the current set chip has a 2 px edge and the word "NOW"; the current progress segment is 8 px tall where the others are 5 px; the current tab has a 3 px top bar and `aria-current`.
+- Accent text is allowed only for links and short labels. Values and instructions use `--color-text`.
+
+**Per accent (ratios from section 5.1; dark / light)**
+
+| Accent | Label on fill | Accent text on surface | Accent vs track (rings, bars) | Caveat and rule |
+| --- | --- | --- | --- | --- |
+| **Ember** (default) | 6.28 / 5.18 | 5.85 / 5.18 | 5.32 / 4.15 | **Close in hue to danger** (`#FF6B6B` / `#B42318`). Danger is always the circle-`!` marker plus words. Destructive buttons are outlined in danger, never filled, except the confirm button inside a confirm dialog. The save-problem bar is identified by its marker and title, not its edge colour. Light: accent text on the ground is 4.57, the tightest pass in the system; prefer fills to accent text. |
+| **Amber** | 8.75 / 5.71 | 8.15 / 5.71 | 7.42 / 4.58 | **Same value as `--color-data-2`** (both themes) and **close to warning** (`#F0B84A` dark; identical `#93590F` light). When amber is active, `--color-data-2` switches to the ember values (dark `#FF5A2C`, light `#C2410C`; vs track 5.32 / 4.15, as text on surface 5.85 / 5.18), so two chart series never share a colour. Warning keeps the diamond marker and words; warning notices use `--color-warning-bg` fill, which an accent element never uses. |
+| **Green** | 8.55 / 5.24 | 7.96 / 5.24 | 7.25 / 4.19 | **Same value as success**, so "current" and "done" share a colour. Done is carried by the tick, the tinted `--color-success-bg` fill and the word "done" in the accessible name. Current is carried by the 2 px edge on a plain surface plus "NOW". Done progress segments stay success and the current segment is the taller one. The PR badge keeps its star. This board must be reviewed with a colour-blindness simulation before it ships (section 7.1). |
+| **Blue** | 7.98 / 5.22 | 7.43 / 5.22 | 6.77 / 4.18 | **Same value as info.** Info notices keep the `i` marker and `--color-info-bg` fill, and never use a button-like accent fill. With blue active, the info marker and edge use `--color-text` so a tip never looks like an action. |
+
+**Picker structure (M2 token plan)**
+- **Tokens.** `:root` holds ember. Each other accent is one block: `[data-accent="amber"]`, `[data-accent="green"]` and `[data-accent="blue"]`, each with a `[data-theme="light"]` variant. Each block sets only `--color-accent` and `--color-on-accent`, plus the per-accent overrides above (amber: `--color-data-2`; blue: info marker). Components never read the accent name, only the tokens. Values are in tokens.json under `accent`.
+- **Attribute.** `data-accent` sits on `<html>` next to `data-theme`. It is set before first paint, from the stored setting, in the same place the theme is applied today, so nothing flashes.
+- **Setting.** Profile, then Appearance: Theme (System, Dark, Light) and Accent. If no value is stored it means ember, so existing data needs no migration step. Whether the value lives in the main document or a separate settings key is for storage-sync-engineer and the architect to decide.
+- **Picker UI.** A radio group of four 48 px swatches, each with its name written under it (Ember, Amber, Green, Blue) so the choice is not colour-only. The selected swatch has a tick and a 2 px `--color-focus` ring. Next to the group is a live preview of a primary button and a current set chip. The change applies at once, and is never offered or applied during a workout (the setting is unreachable under the workout layer).
+- **Tests.** The contrast check in section 5.1 runs against computed styles for every accent in both themes (four accents by two themes), plus golden screenshots of Workout and Train for each.
 
 ### 2.3 Type
 
@@ -261,7 +293,7 @@ Four tabs as the app has today: Train, Progress, Plans, Profile. Height 64 px pl
 
 - **Ring** (rest timer 272 px with 12 px stroke; grade 96 px with 9 px stroke): track `--color-data-track`, value `--color-accent` (timer) or a semantic colour (grade), round caps. The number is always in the centre in words or digits. The ring is `aria-hidden` and the container has `role="timer"` or `role="img"` with a full label.
 - **Bars** (score rows, weekly volume): 6 px, `--radius-xs`, value text always beside the bar. Thresholds coloured by the semantic palette also show the number.
-- **Segmented progress** (exercise n of m): 5 px segments. Done segments are `--color-success`, current `--color-accent`, upcoming `--color-data-track`. The eyebrow text "EXERCISE 2 OF 6" is the accessible source.
+- **Segmented progress** (exercise n of m): 5 px segments. Done segments are `--color-success`, current `--color-accent` and 8 px tall (a shape cue, needed when green is the accent), upcoming `--color-data-track`. The eyebrow text "EXERCISE 2 OF 6" is the accessible source.
 - **Charts** (per-lift trend, volume per muscle): the line is `--color-accent` and a comparison series uses `--color-data-2` with a different dash. **Estimated values are dashed and labelled "est."** Sparse data (fewer points than the chart needs; the threshold comes from training-scientist) shows the points without a trend line and says why.
 
 ### 3.8 Rest timer
@@ -552,6 +584,7 @@ Missing from the canvas (needed for the real app): Plans, Exercise library, Prof
 1. **Live workout, complete:** stepper at limit, typed value, changed-from-last marker, set-chip row with done, skipped, PR and five or more sets (scrolling), superset pair, Finish confirm, Cancel.
 2. **Rest timer** with the safety line, rest-done state, and sound and haptic toggles reachable.
 3. **Light theme** for Train, Workout, Rest and Progress.
+3b. **Accent picker:** Profile, then Appearance (theme and accent), and Workout plus Train in all four accents in both themes. The green board is checked with a colour-blindness simulation for current versus done.
 4. **Train hero states:** plan due, no plan, rest day, resume, first run.
 5. **Save-problem bar states** 1 to 8 in the new style, mid-workout and on Train, dark and light; update card; toasts.
 6. **Profile and Data:** backup status, export, import, snapshots, theme, units, feedback.
@@ -567,21 +600,19 @@ Missing from the canvas (needed for the real app): Plans, Exercise library, Prof
 
 | Stage | What | Visual change | Risk | When |
 | --- | --- | --- | --- | --- |
-| A | Add `--color-*`, `--z-*`, `--font-*` and `--space-*` names as **aliases of current values**; no selector changes | none (goldens identical) | very low; one `<style>` block, needs `npm run stamp` | M1 only if the architect agrees it fits a task; otherwise first M2 task |
+| A | Add `--color-*`, `--z-*`, `--font-*` and `--space-*` names as **aliases of current values**; no selector changes | none (goldens identical) | very low; one `<style>` block, needs `npm run stamp` | **Decided:** M1 only if the architect can fit it into an existing M1 task safely; otherwise the first M2 task |
 | B | Accessibility-only value fixes: `--color-text-muted` (K11), `--color-border-strong` on inputs and secondary buttons, viewport zoom (K28), `role="status"` on toasts (K21), reduced-motion rules for existing animations, FAB layer (K22, K23) | small, targeted | low; golden diffs reviewed | start of M2 (some are already logged for T8) |
-| C | Flip palette and type scale to this system (dark), add light theme values and System theme option, remove gradients and emoji chrome (K24) | whole app | medium; every screen's goldens | M2 |
+| C | Flip palette and type scale to this system (dark), add light theme values and the System theme option, add the four `[data-accent]` token blocks (ember active, so no visual difference from the accent yet), remove gradients and emoji chrome (K24) | whole app | medium; every screen's goldens | M2 |
 | D | Rebuild components screen by screen: **Workout and Rest first** (stepper, chips, Log set, safety line), then Train, Progress, Plans, Profile | per screen | medium; per-screen tasks with real-touch e2e | M2 |
-| E | Accent option (if approved), haptics and sound settings | small | low | M2 or later |
+| E | **Accent picker (decided):** Profile, then Appearance, the stored setting, `data-accent` applied before first paint, and the per-accent rules in 2.2 (amber data-2 swap, blue info marker, current-state shape cues). Contrast is re-measured for four accents by two themes. Haptics and sound settings may ship alongside it. | small | low-medium; goldens per accent | M2, after D's Workout and Train screens (the rules depend on the new chips and segments) |
 
 Each stage gets a task plan, product-designer and accessibility-performance-reviewer review of the built UI, and the contrast table re-measured from computed styles.
 
 ---
 
-## 8. Open questions for James (recommendation first)
+## 8. Open questions for James (recommendation first; numbering kept)
 
-1. **Accent.** Recommend **ember (`#FF5A2C` dark, `#C2410C` light) as the only accent in M2**, with the token structure ready for a later choice. Alternative: ship the picker now with ember and blue only (green collides with "done", amber with warnings and data).
-2. **Light theme.** Recommend **yes, as a full peer**, with "System" as the default for new installs and existing users keeping their current choice. Light helps in sunlight and glare. Alternative: dark only in M2, with light kept on today's values plus the contrast fixes.
-3. **Keep Oswald.** Recommend **yes**. It is the brand, it is already self-hosted (21 KB), and its condensed numerals fit the stepper at 375 px. The missing tabular figures are solved with fixed-width digit cells. Alternative: Inter `tnum` for timers only (stable but loses the look).
-4. **How far before M2.** Recommend **stage A only (token aliases, zero visual change) in M1, and only if the architect can fit it into an existing task without risk**; everything visible waits for M2, starting with stage B (accessibility fixes) and then Workout and Rest. Alternative: nothing in M1.
+Questions 1 to 4 (accent, light theme, Oswald, how far before M2) were answered by James on 2026-11-03; see Decisions at the top. Still open:
+
 5. **Calories headline.** Recommend not showing "kcal burned" as a headline stat until K9 has a source; keep it as a labelled estimate in the finish summary. Alternative: keep it as on the canvas, labelled "(est.)".
 6. **The FAB.** Recommend removing the ⚡ FAB outside workouts (the rest timer starts itself on Log set). This removes K22 and K23 at the source. Alternative: keep it and move it to `--z-page-float`.
