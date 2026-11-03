@@ -96,6 +96,6 @@ as before, and an older cached `index.html` still opens with the same history.
 
 Slow path: if IndexedDB opens but its read fails, the session runs on the mirror text (localStorage
 engine, `status().fallback`); the boot itself does not modify the mirror, but a fallback session's saves DO rewrite `vaultfit_v1` as unmarked plain text (a later IndexedDB boot imports it), and a later IndexedDB boot
-decides again, with a `pre-reconcile` snapshot making any replaced state recoverable. IndexedDB
+decides again, with a `pre-reconcile` snapshot making any replaced state recoverable (unless another tab overwrote meanwhile, K37). IndexedDB
 commits for saves run in the task after the synchronous mirror write (a tap or Finish does not
 pay for the clone); a kill in between leaves the mirror's `hbSeq` ahead, which the next boot imports.
