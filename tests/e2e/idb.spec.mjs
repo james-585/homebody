@@ -523,3 +523,41 @@ test.describe('snapshots, failure and the boot rule', () => {
     expect((await dump(page)).workouts).toHaveLength(N + 1);
   });
 });
+
+test.describe('T6b: the active workout through the store', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+
+  test('a set tap is stored in the same tick; a failed write shows the bar and a later write clears it by itself (K25)', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await page.addInitScript(() => {
+      window.__wmFail = false;
+      const orig = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) {
+        if (k === 'hb_active_workout' && window.__wmFail) {
+          throw new DOMException('quota', 'QuotaExceededError');
+        }
+        return orig.call(this, k, v);
+      };
+    });
+    await openApp(page, siteURL, {
+      vaultfit_v1: SEED_TEXT,
+      hb_seen_guide: '1',
+      hb_active_workout: ACTIVE,
+    });
+    const sync = await page.evaluate(() => {
+      const before = localStorage.getItem('hb_active_workout');
+      document.querySelector('#wm-tick-0-1').click();
+      return [before, localStorage.getItem('hb_active_workout')];
+    });
+    expect(sync[1]).not.toBe(sync[0]); // written inside the click task, no await
+    await page.evaluate(() => (window.__wmFail = true));
+    await page.evaluate(() => document.querySelector('#wm-tick-0-1').click());
+    await expect(page.locator(BAR)).toContainText('Workout not saved yet');
+    await page.evaluate(() => (window.__wmFail = false));
+    await page.evaluate(() => document.querySelector('#wm-tick-0-1').click()); // the next write works: no Retry needed
+    await expect(page.locator(BAR)).toContainText('Everything is saved on this device.');
+    await expect(page.locator(BAR)).toBeHidden({ timeout: 7000 });
+  });
+});

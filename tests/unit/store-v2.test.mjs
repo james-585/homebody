@@ -1222,3 +1222,39 @@ test('a queued job is renumbered past an overwrite: meta.seq never goes backward
   assert.ok(last > 5);
   assert.equal(mirrorOf(r.fs).hbSeq, last, 'the mirror carries the same number');
 });
+
+// ---- T6b: the active workout goes through the store, synchronously -----------------------------------
+test('saveActive writes hb_active_workout in the calling tick, and reports failure and recovery', async () => {
+  const fs = seeded();
+  const store = rig({ fs }).make();
+  await store.load();
+  const json = JSON.stringify({ name: 'W', exercises: [] });
+  assert.equal(store.saveActive(json), true);
+  assert.equal(fs.getItem('hb_active_workout'), json, 'already written, no await in between');
+  fs.failWrites = quotaError;
+  fs.failKeys = ['hb_active_workout'];
+  assert.equal(store.saveActive(json + ' '), false);
+  assert.equal(store.status().activeError, 'quota');
+  assert.equal(fs.getItem('hb_active_workout'), json, 'the previous write is untouched');
+  fs.failWrites = null;
+  assert.equal(store.saveActive(json + ' '), true);
+  assert.equal(store.status().activeError, undefined, 'a later success clears it');
+  assert.equal(store.saveActive(null), true);
+  assert.equal(fs.getItem('hb_active_workout'), null);
+});
+
+test('saveActive works before IndexedDB attaches and while the store is read-only', async () => {
+  const fs = seeded();
+  const fast = rig({ fs, fast: true }).make();
+  await fast.load();
+  assert.equal(fast.saveActive('{"a":1}'), true);
+  assert.equal(fs.getItem('hb_active_workout'), '{"a":1}');
+  const r = rig({ fs: seeded() });
+  const s = r.make();
+  await s.load();
+  r.fake.inspect().stores.get('meta').rows.set('schemaVersion', 3);
+  await s.save({ workouts: [] }).catch(() => {});
+  await settle();
+  assert.equal(s.status().state, 'readonly');
+  assert.equal(s.saveActive('{"b":2}'), true, 'a workout in progress is never refused');
+});

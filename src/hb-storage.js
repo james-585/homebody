@@ -181,6 +181,15 @@
         if (seq !== undefined && seq !== null) p.hbSeq = seq;
         return eng.write(STORAGE_KEY, JSON.stringify(p));
       },
+      /** Remove a key (the active workout, when it ends). true on success; never throws. */
+      remove(key) {
+        try {
+          storage.removeItem(key);
+          return true;
+        } catch {
+          return false;
+        }
+      },
       readMeta() {
         try {
           const raw = storage.getItem(META_KEY);
@@ -757,6 +766,7 @@
     let lastPlain = null; // { text, spliceable } of the newest provisional save, until restamped
     let idbSeqNoted = 0;
     let scheduled = false;
+    let activeError = null; // last saveActive failure kind, null when the last write worked
     const writer = Math.random().toString(36).slice(2, 10); // per session, only tells our own retry from another tab's commit
     let resolveReady;
     const ready = new Promise((r) => (resolveReady = r));
@@ -802,6 +812,7 @@
       if (fallback) s.fallback = fallback;
       if (idbMode()) s.mirror = local ? mirror || 'ok' : 'off';
       if (error) s.error = error.kind;
+      if (activeError) s.activeError = activeError;
       return s;
     }
 
@@ -1466,6 +1477,35 @@
       });
     }
 
+    // ---- the active workout (hb_active_workout stays in localStorage, ADR 0002) -----------------
+    /**
+     * Write (a JSON string) or clear (null) the in-progress workout. SYNCHRONOUS: setItem runs in
+     * the calling tick, so logging a set survives an OS kill the moment it is tapped. Returns true
+     * on success, false on failure (kind in status().activeError); never throws. The caller (the
+     * app's wmPersist) turns the result into the save-problem bar and clears it on a later success.
+     */
+    function saveActive(json) {
+      const eng = local || (engine && !engine.idb ? engine : null);
+      let ok = false;
+      let kind = null;
+      try {
+        if (!eng) throw Object.assign(new Error('unavailable'), { name: 'SecurityError' });
+        if (json === null) {
+          ok = eng.remove(ACTIVE_KEY);
+          if (!ok) kind = 'unknown';
+        } else {
+          const p = eng.write(ACTIVE_KEY, json);
+          p.catch(() => {});
+          if (p.syncError) kind = classifyError(p.syncError);
+          else ok = true;
+        }
+      } catch (e) {
+        kind = classifyError(e);
+      }
+      activeError = ok ? null : kind || 'unknown';
+      return ok;
+    }
+
     function subscribe(fn) {
       subs.add(fn);
       return () => subs.delete(fn);
@@ -1577,6 +1617,7 @@
       snapshot,
       snapshots,
       restore,
+      saveActive,
       attach,
       ready: () => ready,
     };
@@ -1637,6 +1678,7 @@
             snapshot: store.snapshot,
             snapshots: store.snapshots,
             restore: store.restore,
+            saveActive: store.saveActive,
             ready: store.ready,
           }),
         });
