@@ -1258,3 +1258,41 @@ test('saveActive works before IndexedDB attaches and while the store is read-onl
   assert.equal(s.status().state, 'readonly');
   assert.equal(s.saveActive('{"b":2}'), true, 'a workout in progress is never refused');
 });
+
+test('saveActive(null) failing is reported, never thrown; an unavailable store reports failure', async () => {
+  const fs = seeded();
+  const store = rig({ fs }).make();
+  await store.load();
+  assert.equal(store.saveActive('{"a":1}'), true);
+  fs.removeItem = () => {
+    throw new Error('denied');
+  };
+  assert.equal(store.saveActive(null), false);
+  assert.equal(store.status().activeError, 'unknown');
+  const none = createStore({ openEngines: [() => createLocalEngine(null)] });
+  await none.load();
+  assert.equal(none.saveActive('{}'), false);
+  assert.equal(none.status().activeError, 'unavailable');
+});
+
+test('saveActive right after load(), before attach settles, writes and leaves no unhandled rejection', async () => {
+  const seen = [];
+  const on = (e) => seen.push(e);
+  process.on('unhandledRejection', on);
+  const fs = seeded();
+  const r = rig({ fs, fast: true });
+  r.fake.ctl.hangOpen = true; // attach will time out
+  const store = r.make();
+  await store.load();
+  const attaching = store.attach(); // in flight
+  fs.failWrites = quotaError;
+  fs.failKeys = ['hb_active_workout'];
+  assert.equal(store.saveActive('{"x":1}'), false);
+  fs.failWrites = null;
+  assert.equal(store.saveActive('{"x":2}'), true);
+  assert.equal(fs.getItem('hb_active_workout'), '{"x":2}');
+  await attaching;
+  await settle(30);
+  process.off('unhandledRejection', on);
+  assert.deepEqual(seen, []);
+});

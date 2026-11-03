@@ -6738,6 +6738,7 @@ function wmPersist() {
   // T6b: the write goes through the store (synchronous setItem, result reported) when it exists
   const st = window.HB && window.HB.storage && window.HB.storage.saveActive ? window.HB.storage : null;
   if (!wmState) {
+    // deliberate: a failed removal stays silent (no bar for a finished workout); the workout is then offered for resume, never lost
     if (st) st.saveActive(null); else localStorage.removeItem(WM_KEY);
     return;
   }
@@ -6756,7 +6757,7 @@ function wmPersist() {
     if (st) {
       if (st.saveActive(json)) { if (window.hbSaveBarWmOk) window.hbSaveBarWmOk(); }
       else if (window.hbSaveBarWmFailed) window.hbSaveBarWmFailed();
-    } else localStorage.setItem(WM_KEY, json);
+    } else { localStorage.setItem(WM_KEY, json); if (window.hbSaveBarWmOk) window.hbSaveBarWmOk(); }
   } catch(e) { if (window.hbSaveBarWmFailed) window.hbSaveBarWmFailed(); }
 }
 
@@ -6807,7 +6808,7 @@ function wmRestoreIfActive() {
 
     mToast('Workout resumed', 'success');
   } catch(e) {
-    if (window.HB && window.HB.storage.saveActive) window.HB.storage.saveActive(null); else localStorage.removeItem(WM_KEY);
+    if (window.HB && window.HB.storage && window.HB.storage.saveActive) window.HB.storage.saveActive(null); else localStorage.removeItem(WM_KEY);
   }
 }
 

@@ -560,4 +560,42 @@ test.describe('T6b: the active workout through the store', () => {
     await expect(page.locator(BAR)).toContainText('Everything is saved on this device.');
     await expect(page.locator(BAR)).toBeHidden({ timeout: 7000 });
   });
+
+  test('no false Saved when the main save also fails while the workout write recovers', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await idbProbes(page);
+    await page.addInitScript(() => {
+      window.__wmFail = false;
+      const orig = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) {
+        if (k === 'hb_active_workout' && window.__wmFail) {
+          throw new DOMException('quota', 'QuotaExceededError');
+        }
+        return orig.call(this, k, v);
+      };
+    });
+    await openApp(page, siteURL, {
+      vaultfit_v1: SEED_TEXT,
+      hb_seen_guide: '1',
+      hb_active_workout: ACTIVE,
+    });
+    await page.evaluate(() => {
+      window.__wmFail = true;
+      document.querySelector('#wm-tick-0-1').click();
+    });
+    await expect(page.locator(BAR)).toContainText('Workout not saved yet');
+    await page.evaluate(() => {
+      window.__txFail = true; // the history commit fails too
+      persistSave();
+    });
+    await expect(page.locator(BAR)).toContainText('Not saved. Keep HomeBody open.');
+    await page.evaluate(() => {
+      window.__wmFail = false;
+      document.querySelector('#wm-tick-0-1').click(); // the workout write recovers
+    });
+    await expect(page.locator(BAR)).not.toContainText('Everything is saved');
+    await expect(page.locator(BAR)).toContainText('Not saved. Keep HomeBody open.');
+  });
 });
