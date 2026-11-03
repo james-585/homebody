@@ -75,6 +75,27 @@ store and boot in one file), loads the saved document, publishes `window.HB`, th
 `hbStart()` from the `DOMContentLoaded` event. It is a classic script, not an ES module: the module
 path measured about +100 ms on the first visible frame (ADR 0001 note). `src/**` is in the
 generated precache (`npm run stamp`), so it loads offline. A `<head>` flag `hb-booting` hides the
-body until `hbStart` ends (3 s failsafe); if the script fails to load, `hbBootFailed()` starts the
+body until `hbStart` ends (1.5 s failsafe); if the script fails to load, `hbBootFailed()` starts the
 app on empty state and `persistSave()` rejects without writing, so the stored data cannot be
 overwritten.
+
+## Boot with IndexedDB (T6a)
+
+Cold start is close to the pre-M1 level (first contentful paint in Chromium, two runs of 15: steady +3% and +6%, first boot after upgrade +10% and +1.5%, noise about 10%; see K35 for what is unproven). A simple IndexedDB-first boot measured
++35 to +50 ms, so `src/hb-storage.js` boots from the `vaultfit_v1` mirror, as before M1, whenever
+that is provably equal to IndexedDB: the mirror is unmarked (it always wins at boot), or its
+`hbSeq` equals the `idbSeq` the sidecar recorded after the last IndexedDB commit. IndexedDB is
+opened right after the first paint (`HB.storage.ready()` resolves when it is attached) and
+decides: migrate on first use (one transaction with a verbatim snapshot), import the mirror if it
+is newer, or fall back to localStorage when IndexedDB is missing, errors, is blocked or does not
+answer within 1.2 s. Saves made before it attaches write the mirror as plain v1 text at once and
+commit to IndexedDB when it is ready. Anything not provable (no mirror, no sidecar proof, corrupt
+data) takes the slower path that opens IndexedDB first. Nothing here needs the network; the
+cached shell, the service worker and the update flow are unchanged, so airplane-mode opening works
+as before, and an older cached `index.html` still opens with the same history.
+
+Slow path: if IndexedDB opens but its read fails, the session runs on the mirror text (localStorage
+engine, `status().fallback`); the boot itself does not modify the mirror, but a fallback session's saves DO rewrite `vaultfit_v1` as unmarked plain text (a later IndexedDB boot imports it), and a later IndexedDB boot
+decides again, with a `pre-reconcile` snapshot making any replaced state recoverable (unless another tab overwrote meanwhile, K37). IndexedDB
+commits for saves run in the task after the synchronous mirror write (a tap or Finish does not
+pay for the clone); a kill in between leaves the mirror's `hbSeq` ahead, which the next boot imports.

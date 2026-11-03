@@ -6735,7 +6735,13 @@ function wmToggleSw() {
 const WM_KEY = 'hb_active_workout';
 
 function wmPersist() {
-  if (!wmState) { localStorage.removeItem(WM_KEY); return; }
+  // T6b: the write goes through the store (synchronous setItem, result reported) when it exists
+  const st = window.HB && window.HB.storage && window.HB.storage.saveActive ? window.HB.storage : null;
+  if (!wmState) {
+    // deliberate: a failed removal stays silent (no bar for a finished workout); the workout is then offered for resume, never lost
+    if (st) st.saveActive(null); else localStorage.removeItem(WM_KEY);
+    return;
+  }
   try {
     const toSave = {
       name: wmState.name,
@@ -6747,7 +6753,11 @@ function wmPersist() {
       rpe: wmState.rpe,
       planCtx: mLoadedPlanCtx,
     };
-    localStorage.setItem(WM_KEY, JSON.stringify(toSave));
+    const json = JSON.stringify(toSave);
+    if (st) {
+      if (st.saveActive(json)) { if (window.hbSaveBarWmOk) window.hbSaveBarWmOk(); }
+      else if (window.hbSaveBarWmFailed) window.hbSaveBarWmFailed();
+    } else { localStorage.setItem(WM_KEY, json); if (window.hbSaveBarWmOk) window.hbSaveBarWmOk(); }
   } catch(e) { if (window.hbSaveBarWmFailed) window.hbSaveBarWmFailed(); }
 }
 
@@ -6798,7 +6808,7 @@ function wmRestoreIfActive() {
 
     mToast('Workout resumed', 'success');
   } catch(e) {
-    localStorage.removeItem(WM_KEY);
+    if (window.HB && window.HB.storage && window.HB.storage.saveActive) window.HB.storage.saveActive(null); else localStorage.removeItem(WM_KEY);
   }
 }
 
@@ -7431,6 +7441,7 @@ if (screen.orientation && screen.orientation.lock) {
   function becameSaved() { S.main = null; S.phase = 'failed'; if (!(S.wm && wmOpen())) { S.wm = false; S.ok = true; say(COPY.saved[0] + '. ' + COPY.saved[1]); } }
 
   function onStore(st) {
+    if (st.state === 'readonly' && !S.load) { S.load = st.error; S.rawHas = undefined; S.main = null; render(); return; } // read-only after attach (T6): same load-time bar
     if (userRetry || S.load) return;
     if (st.state === 'retrying' || st.state === 'failed') {
       S.ok = false; S.main = st.error || 'unknown'; S.phase = st.state === 'retrying' ? 'retrying' : 'failed';
@@ -7450,6 +7461,13 @@ if (screen.orientation && screen.orientation.lock) {
     if (soft && (S.load || window.HB)) return;   // a soft call never overwrites a real reason or a live store
     S.load = reason; S.soft = !!soft; S.rawHas = undefined; render();
   };      // hbBootFailed: no store
+  // A later automatic write succeeded (K25): the workout-not-saved state clears on its own.
+  window.hbSaveBarWmOk = function () {
+    if (!S.wm || userRetry) return;
+    S.wm = false;
+    if (!S.main && !S.load) { S.ok = true; say(COPY.saved[0] + '. ' + COPY.saved[1]); }
+    render();
+  };
   window.hbSaveBarWmFailed = function () { wmFlag = true; if (userRetry) return; S.wm = true; S.ok = false; render(); };
 
   async function doRetry() {
