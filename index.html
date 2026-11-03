@@ -5962,18 +5962,25 @@ function mImportData(event) {
   reader.readAsText(file);
 }
 
+// Imported values are data: counts must be real numbers before reaching any template.
+function mSafeCount(x) {
+  const n = Array.isArray(x) ? x.length : 0;
+  return Number.isFinite(n) ? n : 0;
+}
+
 function mShowImportConfirm(data) {
-  const wCount = (data.workouts || []).length;
-  const pCount = Object.keys(data.personalRecords || {}).length;
-  const planCount = (data.userPlans || []).length;
-  const favCount  = (data.favourites || []).length;
+  const wCount = mSafeCount(data.workouts);
+  const pCount = (data.personalRecords && typeof data.personalRecords === 'object' && !Array.isArray(data.personalRecords))
+    ? Object.keys(data.personalRecords).length : 0;
+  const planCount = mSafeCount(data.userPlans);
+  const favCount  = mSafeCount(data.favourites);
   const exportDate = data._exported
     ? new Date(data._exported).toLocaleDateString('en-AU', { day:'numeric', month:'short', year:'numeric' })
     : 'Unknown';
 
   document.getElementById('m-import-summary').innerHTML = `
     <div style="margin-bottom:12px;">
-      <div style="font-size:0.8rem;color:var(--muted);margin-bottom:4px;">Exported: <strong style="color:var(--text);">${exportDate}</strong></div>
+      <div style="font-size:0.8rem;color:var(--muted);margin-bottom:4px;">Exported: <strong style="color:var(--text);">${escHtml(exportDate)}</strong></div>
       ${data._name ? `<div style="font-size:0.8rem;color:var(--muted);">Profile: <strong style="color:var(--text);">${escHtml(data._name)}</strong></div>` : ''}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
@@ -5984,7 +5991,7 @@ function mShowImportConfirm(data) {
         ['⭐ Favourites',  favCount],
       ].map(([label, val]) => `
         <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;">
-          <div style="font-family:'Oswald',sans-serif;font-weight:700;font-size:1.5rem;color:var(--accent);line-height:1;">${val}</div>
+          <div style="font-family:'Oswald',sans-serif;font-weight:700;font-size:1.5rem;color:var(--accent);line-height:1;">${Number(val)}</div>
           <div style="font-size:0.7rem;color:var(--muted);margin-top:4px;">${label}</div>
         </div>`).join('')}
     </div>`;
@@ -6007,7 +6014,7 @@ function mConfirmImport() {
   mCloseModal('m-import-modal');
   mRenderHome();
   mRenderMuscleRecovery();
-  mToast(`✓ Import complete — ${state.workouts.length} workouts loaded`, 'success');
+  mToast(`✓ Import complete — ${mSafeCount(state.workouts)} workouts loaded`, 'success');
   mShowPage('profile');
 }
 
@@ -6022,7 +6029,7 @@ function mImportPlanOnly(event) {
     try {
       const data = JSON.parse(e.target.result);
       if (!data._vaultfit) { mToast('Invalid file — not a HomeBody file', 'error'); return; }
-      const plans = data.userPlans || [];
+      const plans = Array.isArray(data.userPlans) ? data.userPlans : [];
       if (!plans.length) { mToast('No plans found in this file', 'error'); return; }
 
       // Show confirmation sheet
@@ -6046,12 +6053,12 @@ function mImportPlanOnly(event) {
             <div style="margin-bottom:14px;">
               ${plans.map(p => `
                 <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;">
-                  <div style="font-family:'Oswald',sans-serif;font-weight:700;font-size:0.95rem;color:var(--text);">${escHtml(p.name)}</div>
-                  <div style="font-size:0.72rem;color:var(--muted);margin-top:3px;">${(p.planDays||p.days||[]).length} sessions</div>
+                  <div style="font-family:'Oswald',sans-serif;font-weight:700;font-size:0.95rem;color:var(--text);">${escHtml(p && p.name)}</div>
+                  <div style="font-size:0.72rem;color:var(--muted);margin-top:3px;">${mSafeCount(p && (p.planDays||p.days))} sessions</div>
                 </div>`).join('')}
             </div>
             <div style="background:rgba(232,77,42,0.06);border:1px solid rgba(232,77,42,0.2);border-radius:8px;padding:12px;">
-              <div style="font-size:0.78rem;color:var(--muted);line-height:1.55;">✓ Your <strong style="color:var(--text);">${state.workouts.length} workouts</strong>, PRs, body metrics and profile will not be changed.</div>
+              <div style="font-size:0.78rem;color:var(--muted);line-height:1.55;">✓ Your <strong style="color:var(--text);">${mSafeCount(state.workouts)} workouts</strong>, PRs, body metrics and profile will not be changed.</div>
             </div>
           </div>
           <div class="modal-footer" style="flex-direction:column;gap:8px;">
