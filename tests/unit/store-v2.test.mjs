@@ -1144,3 +1144,81 @@ test('fuzz: the mirror text always parses back to the payload with the right hbS
     assert.equal('extra' in JSON.parse(r.fs.getItem(STORAGE_KEY)), false);
   }
 });
+
+// ---- third review batch ---------------------------------------------------------------------------
+for (const variant of ['restore', 'import']) {
+  test(`another tab's ${variant} is never mistaken for this tab's own retry`, async () => {
+    const fs = seeded();
+    const r = rig({ fs });
+    const A = r.make();
+    const dA = await A.load();
+    dA.workouts.unshift({ id: 'A1', name: 'A1', exercises: [] });
+    await A.save(payload(dA));
+    await settle();
+    const B = rig({ fs, fake: r.fake }).make();
+    await B.load();
+    if (variant === 'restore') {
+      await B.restore((await B.snapshots())[0].id);
+    } else {
+      fs.setItem(
+        STORAGE_KEY,
+        withWorkout(V1_TEXT, { id: 'B-IMPORT', name: 'B-IMPORT', exercises: [] }),
+      );
+      const B2 = rig({ fs, fake: r.fake }).make();
+      await B2.load(); // a pre-M1 build wrote newer data: imported (no writer tag)
+    }
+    assert.equal(idbMeta(r.fake).writer, undefined, 'the tag is cleared by every document write');
+    const foreign = idbMeta(r.fake).seq;
+    dA.workouts.unshift({ id: 'A2', name: 'A2', exercises: [] });
+    await A.save(payload(dA)); // A's number collides with the foreign commit
+    await settle();
+    const over = idbSnaps(r.fake).filter((s) => s.reason === 'pre-overwrite');
+    assert.equal(over.length, 1, 'the foreign commit is kept before being replaced');
+    assert.ok(idbMeta(r.fake).seq > foreign, 'meta.seq moved past it');
+    dA.workouts.unshift({ id: 'A3', name: 'A3', exercises: [] });
+    await A.save(payload(dA));
+    await settle();
+    assert.equal(idbSnaps(r.fake).filter((s) => s.reason === 'pre-overwrite').length, 1);
+  });
+}
+
+test('the in-transaction check refuses a non-finite seq and records without meta', async () => {
+  for (const [label, mutate] of [
+    ['NaN seq', (rows) => rows.set('seq', NaN)],
+    ['Infinity seq', (rows) => rows.set('seq', Infinity)],
+    [
+      'records only, no meta',
+      (rows, f) => (rows.delete('schemaVersion'), f.inspect().stores.get('workouts').rows.clear()),
+    ],
+  ]) {
+    const r = rig({ fs: seeded() });
+    const s1 = r.make();
+    const d = await s1.load();
+    await s1.save(payload(d));
+    await settle();
+    mutate(r.fake.inspect().stores.get('meta').rows, r.fake);
+    await assert.rejects(s1.save(payload(d)), { kind: 'corrupt' }, label);
+  }
+});
+
+test('a queued job is renumbered past an overwrite: meta.seq never goes backwards', async () => {
+  const r = rig({ fs: seeded() });
+  const a = r.make();
+  const da = await a.load();
+  const b = rig({ fs: r.fs, fake: r.fake }).make();
+  const db = await b.load();
+  for (let i = 0; i < 4; i++) {
+    db.workouts.unshift({ id: 100 + i, exercises: [] });
+    await b.save(payload(db)); // B runs ahead: seq 5
+  }
+  let last = 0;
+  for (const id of [1, 2, 3]) {
+    da.workouts.unshift({ id, exercises: [] });
+    await a.save(payload(da));
+    await settle();
+    assert.ok(idbMeta(r.fake).seq > last, 'monotonic');
+    last = idbMeta(r.fake).seq;
+  }
+  assert.ok(last > 5);
+  assert.equal(mirrorOf(r.fs).hbSeq, last, 'the mirror carries the same number');
+});

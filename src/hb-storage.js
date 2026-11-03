@@ -459,7 +459,10 @@
         const refuse = (kind) => {
           throw Object.assign(new Error(kind), { kind });
         };
-        const go = safe((extra, replacedSeq) => {
+        // our own earlier attempt that finished after its timeout (same seq, same session tag)
+        const ownRetry = () =>
+          o.writer !== undefined && sq.result === o.seq && wr.result === o.writer;
+        const go = safe((extra) => {
           const wk = tx.objectStore('workouts');
           const rc = tx.objectStore('records');
           const mt = tx.objectStore('meta');
@@ -473,11 +476,15 @@
             if (doc[k] !== undefined) rc.put(doc[k], k);
             else rc.delete(k);
           }
-          // never let this tab's counter fall behind what it replaced
-          result.seq = Math.max(o.seq ?? 0, replacedSeq === undefined ? 0 : replacedSeq + 1);
+          // meta.seq never goes backwards: past whatever was there, unless it is our own late retry
+          const floor = typeof sq.result === 'number' && !ownRetry() ? sq.result + 1 : 0;
+          result.seq = Math.max(o.seq ?? 0, floor);
           mt.put(target, 'schemaVersion');
           mt.put(result.seq, 'seq');
+          // every document write sets or clears the tag, so another tab's import or restore is
+          // never mistaken for this tab's own late retry
           if (o.writer !== undefined) mt.put(o.writer, 'writer');
+          else mt.delete('writer');
           for (const f of META_FIELDS) {
             if (o.metaPatch && o.metaPatch[f] !== undefined && f !== 'schemaVersion' && f !== 'seq')
               mt.put(o.metaPatch[f], f);
@@ -491,11 +498,17 @@
         const sq = tx.objectStore('meta').get('seq');
         const wr = tx.objectStore('meta').get('writer');
         const wc = tx.objectStore('workouts').count();
-        wc.onsuccess = safe(() => {
+        const rcnt = tx.objectStore('records').count();
+        rcnt.onsuccess = safe(() => {
           const v = sv.result;
           if (v === undefined) {
-            if (wc.result > 0) refuse('corrupt'); // data without meta
-          } else if (!Number.isInteger(v) || v < 1 || typeof sq.result !== 'number') {
+            if (wc.result > 0 || rcnt.result > 0) refuse('corrupt'); // data without meta
+          } else if (
+            !Number.isInteger(v) ||
+            v < 1 ||
+            typeof sq.result !== 'number' ||
+            !isFinite(sq.result)
+          ) {
             refuse('corrupt');
           } else if (v > target) refuse('future');
           if (o.ifUnmigrated) {
@@ -505,11 +518,14 @@
             o.expectSeq === undefined ||
             sq.result === undefined ||
             sq.result === o.expectSeq ||
-            (o.writer !== undefined && sq.result === o.seq && wr.result === o.writer) // our own earlier attempt that finished after its timeout
+            ownRetry()
           ) {
             go(null);
           } else {
-            const replaced = sq.result;
+            if (o.skipOnMismatch) {
+              result.skipped = true; // the caller re-reads and decides again
+              return;
+            }
             readInto(tx, safe, (cur) => {
               result.overwrote = true;
               go(
@@ -522,7 +538,6 @@
                       createdAt: o.overwriteAt ?? 0,
                     }
                   : null,
-                replaced,
               );
             });
           }
@@ -904,7 +919,7 @@
         seq: next,
         schema: current,
         expectSeq: stored.seq,
-        overwriteAt: now(),
+        skipOnMismatch: true,
         snapshot: {
           reason: 'pre-reconcile',
           schemaVersion: stored.doc.schemaVersion,
@@ -913,7 +928,7 @@
           createdAt: now(),
         },
       });
-      return { doc: r.doc, seq: res.seq };
+      return res.skipped ? { skipped: true } : { doc: r.doc, seq: res.seq };
     }
 
     /**
@@ -965,6 +980,11 @@
           case 'import-mirror': {
             const m = await commitImport(e, stored, raw, mseq);
             check();
+            if (m && m.skipped) {
+              stored = await e.readDoc(); // changed under us: look again
+              check();
+              continue;
+            }
             if (!m) return stored.doc;
             seq = committed = m.seq;
             stampMirror(m.doc, m.seq);
@@ -1032,7 +1052,14 @@
         const e = await openEngines.find((f) => f.idb)();
         if (!live()) return e.close();
         let stored = e.takeFirst();
-        if (stored === undefined) stored = await e.readDoc();
+        if (stored === undefined) {
+          try {
+            stored = await e.readDoc();
+          } catch (x) {
+            e.close();
+            throw x;
+          }
+        }
         if (!live()) return e.close();
         engine = e;
         await resolveBoot(e, stored, fastRaw, true, live);
@@ -1265,8 +1292,10 @@
           ).then((res) => {
             // another tab committed first: its state was kept as pre-overwrite, and our counter
             // moves past it so the next write is not mistaken for another overwrite
-            if (res && res.overwrote) seq = Math.max(seq, res.seq);
-            if (res) job.committedSeq = res.seq;
+            if (res) {
+              seq = Math.max(seq, res.seq);
+              job.committedSeq = res.seq;
+            }
             return res;
           });
         } catch (e) {
@@ -1279,6 +1308,18 @@
         const p = Promise.reject(e);
         p.syncError = e;
         return p;
+      }
+    }
+
+    /** The commit was numbered past what it replaced: give the mirror the same number (if still newest). */
+    function renumberMirror(job) {
+      if (!local || !mirrorLive() || queued) return;
+      try {
+        local
+          .write(STORAGE_KEY, mirrorText(job.text, JSON.parse(job.text), job.committedSeq))
+          .catch(() => (mirror = 'stale'));
+      } catch {
+        mirror = 'stale';
       }
     }
 
@@ -1311,6 +1352,8 @@
         publish(kind);
         if (!kind && idbMode() && job.seq) {
           if (job.restamp) restampMirror(job);
+          else if (job.committedSeq !== undefined && job.committedSeq !== job.seq)
+            renumberMirror(job);
           committed = job.committedSeq ?? job.seq;
           noteCommitted(job.committedSeq ?? job.seq);
         }
@@ -1485,7 +1528,7 @@
         if (!r.ok) throw kinded(r.reason);
         const cur = await engine.readDoc();
         const next = Math.max(seq, cur && !cur.corrupt ? cur.seq : 0) + 1;
-        await engine.writeDoc(r.doc, {
+        const res = await engine.writeDoc(r.doc, {
           seq: next,
           schema: current,
           protectId: id,
@@ -1502,9 +1545,9 @@
                 }
               : undefined,
         });
-        seq = committed = next;
-        stampMirror(r.doc, next);
-        noteCommitted(next);
+        seq = committed = res.seq;
+        stampMirror(r.doc, res.seq);
+        noteCommitted(res.seq);
         lock('restored'); // read-only until reload; the bar says to reopen
         return { restored: id };
       } catch (e) {
