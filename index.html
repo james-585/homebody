@@ -1135,7 +1135,18 @@ function mToast(msg, type='') {
   const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : '';
   const el = document.createElement('div');
   el.className = `m-toast${type?' '+type:''}`;
-  el.innerHTML = icon ? `<span class="m-toast-icon" style="color:${type==='success'?'var(--signal)':'var(--red)'};">${icon}</span><span class="m-toast-text">${msg}</span>` : `<span class="m-toast-text">${msg}</span>`;
+  // The message is data (it can contain plan or exercise names from a file): text nodes only.
+  if (icon) {
+    const ic = document.createElement('span');
+    ic.className = 'm-toast-icon';
+    ic.style.color = type === 'success' ? 'var(--signal)' : 'var(--red)';
+    ic.textContent = icon;
+    el.appendChild(ic);
+  }
+  const tx = document.createElement('span');
+  tx.className = 'm-toast-text';
+  tx.textContent = String(msg);
+  el.appendChild(tx);
   const container = document.getElementById('m-toasts') || document.body;
   container.appendChild(el);
   requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
@@ -6024,13 +6035,13 @@ function mNormalisePlan(p, id) {
   const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
   if (!isObj(p)) return null;
   const str = (v, max) => (typeof v === 'string' || typeof v === 'number') ? String(v).slice(0, max) : '';
-  const num = (v) => (typeof v === 'number' && Number.isFinite(v)) ? Math.min(Math.max(v, 0), 100000) : 0;
+  const num = (v, lo, hi) => (typeof v === 'number' && Number.isFinite(v)) ? Math.min(Math.max(v, lo), hi) : lo;
   const src = Array.isArray(p.planDays) ? p.planDays : (Array.isArray(p.days) ? p.days : []);
   const planDays = src.filter(isObj).map(d => {
     const day = { name: str(d.name, 200), exercises: (Array.isArray(d.exercises) ? d.exercises : []).filter(isObj).map(e => {
       const ex = { name: str(e.name, 200), trackType: e.trackType === 'time' ? 'time' : 'reps',
-        sets: num(e.sets), reps: num(e.reps), weight: num(e.weight) };
-      if (e.time !== undefined) ex.time = num(e.time);
+        sets: num(e.sets, 1, 20), reps: num(e.reps, 0, 1000), weight: num(e.weight, 0, 1000) };
+      if (e.time !== undefined) ex.time = num(e.time, 0, 3600);
       if (typeof e.muscle === 'string') ex.muscle = str(e.muscle, 50);
       if (typeof e.supersetGroup === 'string' && e.supersetGroup) ex.supersetGroup = str(e.supersetGroup, 50);
       return ex;
@@ -6047,10 +6058,10 @@ function mNormalisePlan(p, id) {
   };
   if (typeof p.goal === 'string') out.goal = str(p.goal, 50);
   if (typeof p.author === 'string') out.author = str(p.author, 100);
-  if (typeof p.weeks === 'number' && Number.isFinite(p.weeks)) out.weeks = num(p.weeks);
-  if (typeof p.daysPerWeek === 'number' && Number.isFinite(p.daysPerWeek)) out.daysPerWeek = num(p.daysPerWeek);
+  if (typeof p.weeks === 'number' && Number.isFinite(p.weeks)) out.weeks = num(p.weeks, 0, 52);
+  if (typeof p.daysPerWeek === 'number' && Number.isFinite(p.daysPerWeek)) out.daysPerWeek = num(p.daysPerWeek, 0, 7);
   if (p._generated === true) out._generated = true;
-  if (typeof p._weekCycle === 'number' && Number.isFinite(p._weekCycle)) out._weekCycle = num(p._weekCycle);
+  if (typeof p._weekCycle === 'number' && Number.isFinite(p._weekCycle)) out._weekCycle = num(p._weekCycle, 0, 52);
   if (isObj(p._progressionLog)) {
     out._progressionLog = {};
     Object.keys(p._progressionLog).slice(0, 2000).forEach(k => {
@@ -6067,6 +6078,7 @@ function mImportPlanOnly(event) {
   const file = event.target.files[0];
   event.target.value = '';
   if (!file) return;
+  if (file.size > 2 * 1024 * 1024) { mToast('File is too large to import (limit 2 MB)', 'error'); return; }
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
@@ -6074,6 +6086,12 @@ function mImportPlanOnly(event) {
       if (!data._vaultfit) { mToast('Invalid file — not a HomeBody file', 'error'); return; }
       const plans = Array.isArray(data.userPlans) ? data.userPlans : [];
       if (!plans.length) { mToast('No plans found in this file', 'error'); return; }
+      const dayList = (q) => (q && Array.isArray(q.planDays)) ? q.planDays : (q && Array.isArray(q.days) ? q.days : []);
+      const tooBig = plans.length > 50 || plans.some(q => {
+        const dl = dayList(q);
+        return dl.length > 28 || dl.some(d => d && Array.isArray(d.exercises) && d.exercises.length > 30);
+      });
+      if (tooBig) { mToast('This plan file is too large to import (max 50 plans, 28 days, 30 exercises a day)', 'error'); return; }
 
       // Show confirmation sheet
       const existing = document.getElementById('m-plan-import-modal');
@@ -6118,9 +6136,12 @@ function mImportPlanOnly(event) {
         let nextId = Date.now();
         const fresh = [];
         plans.forEach(p => {
-          while (used.has(nextId)) nextId++;
-          const np = mNormalisePlan(p, nextId);
-          if (np) { used.add(nextId); fresh.push(np); }
+          // Keep the file's own id when it is a safe positive integer not already used (so
+          // "N done" links survive restoring your own plan file); otherwise mint a fresh one.
+          const keep = p && Number.isSafeInteger(p.id) && p.id > 0 && !used.has(p.id);
+          if (!keep) while (used.has(nextId)) nextId++;
+          const np = mNormalisePlan(p, keep ? p.id : nextId);
+          if (np) { used.add(np.id); fresh.push(np); }
         });
         if (!fresh.length) { modal.remove(); mToast('No valid plans found in this file', 'error'); return; }
         fresh.forEach(np => state.userPlans.push(np));
@@ -6129,12 +6150,11 @@ function mImportPlanOnly(event) {
         modal.remove();
         mRenderMyPlans();
         mShowPage('plans');
-        // Switch to My Plans tab
-        document.querySelectorAll('.plan-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.plan-tab-content').forEach(t => t.classList.remove('active'));
-        document.querySelector('.plan-tab').nextElementSibling.classList.add('active');
-        document.getElementById('m-plan-tab-mine').classList.add('active');
         mToast(`✓ ${added} plan${added>1?'s':''} added to My Plans`, 'success');
+        // Switch to the Browse tab, then its My Plans list (the old #m-plan-tab-mine no longer exists)
+        const tabs = document.querySelectorAll('.plan-tab');
+        if (tabs[1] && typeof mSwitchPlanTab === 'function') mSwitchPlanTab('browse', tabs[1]);
+        if (typeof mSwitchBrowseTab === 'function' && document.getElementById('m-browse-mine')) mSwitchBrowseTab('mine');
       });
     } catch { mToast('Could not read file', 'error'); }
   };
@@ -6571,7 +6591,7 @@ function wmRenderExercise(ex, ei) {
         ${hintHtml}
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
-        <button onclick="wmShowExInfo('${ex.name.replace(/'/g,"\\'")}');event.stopPropagation();"
+        <button onclick="wmShowExInfo(wmState.exercises[${ei}].name);event.stopPropagation();"
           style="background:none;border:none;color:var(--muted);font-size:1rem;cursor:pointer;padding:4px;line-height:1;" title="How to do this exercise">ℹ️</button>
         <div style="font-size:0.75rem;color:${allDone?'var(--green)':'var(--muted)'};">
           ${allDone ? '✓' : wmCountDone(ex.sets) + '/' + ex.sets.length}
