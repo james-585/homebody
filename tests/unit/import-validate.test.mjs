@@ -501,7 +501,17 @@ test('dates: date-only, HH:MM, seconds and offset forms are accepted; impossible
 });
 
 test('invisible and direction characters are refused: zero-width, marks, BOM inside, noncharacters', () => {
-  for (const c of ['\u200B', '\u200C', '\u200D', '\u200E', '\u200F', '\u061C', '\uFEFF', '\uFFFE', '\uFFFF']) {
+  for (const c of [
+    '\u200B',
+    '\u200C',
+    '\u200D',
+    '\u200E',
+    '\u200F',
+    '\u061C',
+    '\uFEFF',
+    '\uFFFE',
+    '\uFFFF',
+  ]) {
     refuses(
       edit((f) => (f.workouts[0].name = `a${c}b`)),
       'bad-chars',
