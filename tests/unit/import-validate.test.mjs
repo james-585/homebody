@@ -555,3 +555,22 @@ test('every reason the validator or the merge can give is a listed code', () => 
   }
   for (const [name, x] of VARIANTS) assert.ok(io.REASONS.includes(V(x).reason), name);
 });
+
+test('validator speed on a file near the size limit: parse + validate well inside 2 s', () => {
+  const w = real().workouts[0];
+  const workouts = Array.from({ length: 9000 }, (_, i) => ({
+    ...w,
+    id: i + 1,
+    notes: 'n'.repeat(900),
+  }));
+  const text = JSON.stringify({ _vaultfit: true, _version: 2, workouts });
+  assert.ok(text.length > 14 * 1024 * 1024 && text.length < LIMITS.maxBytes);
+  const t0 = performance.now();
+  const r = V(text);
+  const ms = performance.now() - t0;
+  console.log(
+    `# validate(${(text.length / 1048576).toFixed(1)} MB, 9000 workouts): ${ms.toFixed(0)} ms`,
+  );
+  assert.equal(r.ok, true);
+  assert.ok(ms < 2000, `took ${ms} ms`);
+});

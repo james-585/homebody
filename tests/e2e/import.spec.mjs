@@ -117,18 +117,21 @@ test.describe('import through HB.io', () => {
     expect(head._containsHealthData).toBe(true);
     expect('_name' in head).toBe(false);
     // re-import that export over the same data: nothing new, then replace gives the same state
+    const beforeMirror = await mirror(page);
     const after = await page.evaluate(async (text) => {
       const imp = await HB.io.importFile(new globalThis.File([text], 'cur.vaultfit'));
       const s = imp.summary;
-      await imp.apply({ mode: 'replace' });
+      const res = await imp.apply({ mode: 'replace' });
       return {
         present: s.merge.workoutsPresent,
         added: s.merge.workoutsAdded,
-        n: state.workouts.length,
+        n: res.doc.workouts.length,
       };
     }, r.text);
     expect(after.present).toBe(N);
     expect(after.added).toBe(0);
+    expect(after.n).toBe(N);
+    expect(await mirror(page)).toEqual(beforeMirror); // the same state, byte for byte
     const stored = await mirror(page);
     expect(stored.workouts).toEqual(seedData().workouts);
     expect(stored.userPlans).toEqual(seedData().userPlans);
@@ -313,5 +316,36 @@ test.describe('lazy modules and offline', () => {
     }, REAL_TEXT);
     expect(s).toBe(N);
     expect(requests.some((p) => p.includes('/src/storage/import-export.js'))).toBe(true);
+  });
+});
+
+test.describe('validator speed on a big file (indicative: a generous bound, the numbers go in the report)', () => {
+  test('parse and validate about 16 MB in the browser @smoke', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await open(page, siteURL);
+    const r = await page.evaluate(async (base) => {
+      const { validate } = await import(`${base}src/storage/validate.js`);
+      const w = {
+        id: 1,
+        name: 'Plank',
+        date: '2026-10-01T00:00:00.000Z',
+        exercises: [{ name: 'Plank', sets: 3, reps: 0, time: 30, weight: 0, trackType: 'time' }],
+        notes: 'n'.repeat(1700),
+      };
+      const workouts = Array.from({ length: 9000 }, (_, i) => ({ ...w, id: i + 1 }));
+      const text = JSON.stringify({ _vaultfit: true, _version: 2, workouts });
+      const t0 = performance.now();
+      JSON.parse(text);
+      const parseMs = performance.now() - t0;
+      const t1 = performance.now();
+      const v = validate(text, { now: Date.UTC(2026, 10, 3) });
+      return { mb: text.length / 1048576, parseMs, validateMs: performance.now() - t1, ok: v.ok };
+    }, siteURL);
+    console.log(`# 16 MB in the page: ${JSON.stringify(r)}`);
+    expect(r.ok).toBe(true);
+    expect(r.mb).toBeGreaterThan(15);
+    expect(r.validateMs).toBeLessThan(5000); // generous: the plan's limit is 2000 ms on a normal machine
   });
 });

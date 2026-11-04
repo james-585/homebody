@@ -636,7 +636,10 @@ test('K39: no mirror writer can stamp a counter above MAX_SEQ; a stored seq abov
   assert.equal(s.status().state, 'readonly');
   assert.equal(s.status().error, 'corrupt');
   await assert.rejects(s.importDoc(REAL_TEXT), { kind: 'corrupt' });
-  r.fake.inspect().stores.get('meta').rows.set('seq', 1e15);
+  const k39 = JSON.parse(
+    readFileSync(join(SYNTHETIC_DIR, 'import', 'k39_meta_seq_1e15.json'), 'utf8'),
+  );
+  r.fake.inspect().stores.get('meta').rows.set('seq', k39.seq);
   const s2 = r.make();
   await s2.load();
   assert.equal(

@@ -7,3 +7,4 @@ Derived by script from `tests/fixtures/legacy/vaultfit_v1_export.sanitized.json`
 - `hostile_name_refused.json`: `<script>` in a workout name; refused (`bad-chars`), whole file rejected.
 - `proto_key_refused.json`: a `__proto__` key in `personalRecords` (raw text); refused (`bad-key`).
 - `k39_mirror_15_digit_hbseq.json`: a `vaultfit_v1` mirror text whose `hbSeq` has 15 digits (the K39 case); the boot rule must ignore it.
+- `k39_meta_seq_1e15.json`: the IndexedDB `meta` values (`schemaVersion`, `seq`) of an install whose commit counter already passed the bound (the K39 case); the store must open it read-only as corrupt.
