@@ -1,0 +1,94 @@
+{
+ "_vaultfit": true,
+ "_version": 2,
+ "_exported": "2026-10-31T00:00:00.000Z",
+ "workouts": [
+  {
+   "id": 11,
+   "name": "<script>alert(1)</script>",
+   "date": "2026-10-31T00:10:36.187Z",
+   "exercises": [
+    {
+     "name": "KB Goblet Squat",
+     "sets": 4,
+     "reps": 17,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps"
+    },
+    {
+     "name": "KB Romanian Deadlift",
+     "sets": 3,
+     "reps": 17,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps"
+    },
+    {
+     "name": "KB Glute Bridge",
+     "sets": 3,
+     "reps": 22,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps"
+    },
+    {
+     "name": "KB Lunge (Left)",
+     "sets": 3,
+     "reps": 13,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps",
+     "bilateral": true,
+     "side": "left"
+    },
+    {
+     "name": "KB Lunge (Right)",
+     "sets": 3,
+     "reps": 13,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps",
+     "bilateral": true,
+     "side": "right"
+    },
+    {
+     "name": "KB Calf Raise",
+     "sets": 2,
+     "reps": 25,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps"
+    },
+    {
+     "name": "Dead Bug",
+     "sets": 2,
+     "reps": 15,
+     "time": 0,
+     "weight": 0,
+     "trackType": "reps"
+    },
+    {
+     "name": "Plank",
+     "sets": 2,
+     "reps": 0,
+     "time": 60,
+     "weight": 0,
+     "trackType": "time"
+    }
+   ],
+   "totalVolume": 5008,
+   "totalSets": 22,
+   "calories": 197,
+   "duration": 38,
+   "bodyWeight": 80,
+   "rpe": 7,
+   "notes": "<img src=x onerror=alert(1)> and <b>bold</b>"
+  }
+ ],
+ "personalRecords": {},
+ "bodyMetrics": [],
+ "userPlans": [],
+ "profile": null,
+ "favourites": []
+}

@@ -1,0 +1,992 @@
+{
+ "_vaultfit": true,
+ "_exported": "2026-10-31T00:00:00.000Z",
+ "_name": "Test User",
+ "workouts": [
+  {
+   "id": 1793405436187,
+   "name": "Plan 37 — Session",
+   "date": "2026-10-31T00:10:36.187Z",
+   "exercises": [
+    {
+     "name": "KB Goblet Squat",
+     "sets": 4,
+     "reps": 17,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps"
+    },
+    {
+     "name": "KB Romanian Deadlift",
+     "sets": 3,
+     "reps": 17,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps"
+    },
+    {
+     "name": "KB Glute Bridge",
+     "sets": 3,
+     "reps": 22,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps"
+    },
+    {
+     "name": "KB Lunge (Left)",
+     "sets": 3,
+     "reps": 13,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps",
+     "bilateral": true,
+     "side": "left"
+    },
+    {
+     "name": "KB Lunge (Right)",
+     "sets": 3,
+     "reps": 13,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps",
+     "bilateral": true,
+     "side": "right"
+    },
+    {
+     "name": "KB Calf Raise",
+     "sets": 2,
+     "reps": 25,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps"
+    },
+    {
+     "name": "Dead Bug",
+     "sets": 2,
+     "reps": 15,
+     "time": 0,
+     "weight": 0,
+     "trackType": "reps"
+    },
+    {
+     "name": "Plank",
+     "sets": 2,
+     "reps": 0,
+     "time": 60,
+     "weight": 0,
+     "trackType": "time"
+    }
+   ],
+   "totalVolume": 5008,
+   "totalSets": 22,
+   "calories": 197,
+   "duration": 38,
+   "bodyWeight": 80
+  },
+  {
+   "id": 1793261125667,
+   "name": "Plan 36 — Session",
+   "date": "2026-10-29T08:05:25.667Z",
+   "exercises": [
+    {
+     "name": "DB Floor Press",
+     "sets": 4,
+     "reps": 17,
+     "time": 0,
+     "weight": 10,
+     "trackType": "reps"
+    },
+    {
+     "name": "DB Single-Arm Row (Left)",
+     "sets": 4,
+     "reps": 17,
+     "time": 0,
+     "weight": 10,
+     "trackType": "reps"
+    },
+    {
+     "name": "DB Single-Arm Row (Right)",
+     "sets": 4,
+     "reps": 17,
+     "time": 0,
+     "weight": 10,
+     "trackType": "reps"
+    },
+    {
+     "name": "DB Overhead Press",
+     "sets": 3,
+     "reps": 16,
+     "time": 0,
+     "weight": 10,
+     "trackType": "reps"
+    },
+    {
+     "name": "DB Rear Delt Fly",
+     "sets": 3,
+     "reps": 13,
+     "time": 0,
+     "weight": 10,
+     "trackType": "reps"
+    },
+    {
+     "name": "Push-Up",
+     "sets": 3,
+     "reps": 15,
+     "time": 0,
+     "weight": 0,
+     "trackType": "reps"
+    },
+    {
+     "name": "DB Lateral Raise",
+     "sets": 3,
+     "reps": 12,
+     "time": 0,
+     "weight": 10,
+     "trackType": "reps"
+    },
+    {
+     "name": "DB Hammer Curl",
+     "sets": 4,
+     "reps": 15,
+     "time": 0,
+     "weight": 10,
+     "trackType": "reps"
+    },
+    {
+     "name": "DB Overhead Tricep Extension",
+     "sets": 4,
+     "reps": 14,
+     "time": 0,
+     "weight": 10,
+     "trackType": "reps"
+    },
+    {
+     "name": "KB Around the World",
+     "sets": 2,
+     "reps": 30,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps"
+    }
+   ],
+   "totalVolume": 5390,
+   "totalSets": 34,
+   "calories": 195,
+   "duration": 44,
+   "bodyWeight": 80
+  },
+  {
+   "id": 1793054544376,
+   "name": "Plan 38 — Session",
+   "date": "2026-10-26T22:42:24.376Z",
+   "exercises": [
+    {
+     "name": "KB Bent-Over Row (Left)",
+     "sets": 3,
+     "reps": 17,
+     "time": 0,
+     "weight": 10,
+     "trackType": "reps"
+    },
+    {
+     "name": "KB Bent-Over Row (Right)",
+     "sets": 3,
+     "reps": 17,
+     "time": 0,
+     "weight": 10,
+     "trackType": "reps"
+    },
+    {
+     "name": "KB Goblet Squat",
+     "sets": 4,
+     "reps": 16,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps"
+    },
+    {
+     "name": "KB Single-Leg Deadlift (Left)",
+     "sets": 3,
+     "reps": 13,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps"
+    },
+    {
+     "name": "KB Single-Leg Deadlift (Right)",
+     "sets": 3,
+     "reps": 13,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps"
+    },
+    {
+     "name": "KB Lunge (Left)",
+     "sets": 3,
+     "reps": 13,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps"
+    },
+    {
+     "name": "KB Lunge (Right)",
+     "sets": 3,
+     "reps": 13,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps"
+    },
+    {
+     "name": "Single-Leg Glute Bridge (Left)",
+     "sets": 3,
+     "reps": 11,
+     "time": 0,
+     "weight": 5,
+     "trackType": "reps"
+    },
+    {
+     "name": "Single-Leg Glute Bridge (Right)",
+     "sets": 3,
+     "reps": 11,
+     "time": 0,
+     "weight": 5,
+     "trackType": "reps"
+    },
+    {
+     "name": "KB Calf Raise",
+     "sets": 2,
+     "reps": 24,
+     "time": 0,
+     "weight": 16,
+     "trackType": "reps"
+    },
+    {
+     "name": "Dead Bug",
+     "sets": 2,
+     "reps": 15,
+     "time": 0,
+     "weight": 19,
+     "trackType": "reps"
+    },
+    {
+     "name": "Plank",
+     "sets": 2,
+     "reps": 0,
+     "time": 60,
+     "weight": 0,
+     "trackType": "time"
+    }
+   ],
+   "totalVolume": 6208,
+   "totalSets": 34,
+   "calories": 237,
+   "duration": 45,
+   "bodyWeight": 80
+  }
+ ],
+ "personalRecords": {
+  "Plank": {
+   "value": 120,
+   "unit": "sec"
+  },
+  "Side Plank": {
+   "value": 45,
+   "unit": "sec"
+  },
+  "KB Press": {
+   "value": 12,
+   "unit": "kg"
+  }
+ },
+ "bodyMetrics": [
+  {
+   "date": "2026-09-23T22:13:58.287Z",
+   "weight": 81.8,
+   "waist": 85,
+   "bodyfat": null
+  },
+  {
+   "date": "2026-05-22T22:15:58.127Z",
+   "weight": 81.5,
+   "waist": null,
+   "bodyfat": 20
+  }
+ ],
+ "userPlans": [
+  {
+   "id": 1780457733614.9,
+   "name": "Test Plan",
+   "desc": "Synthetic plan text (original removed).",
+   "level": "intermediate",
+   "goal": "lose_fat",
+   "daysPerWeek": 4,
+   "planDays": [
+    {
+     "name": "Day 1",
+     "note": "",
+     "exercises": [
+      {
+       "name": "KB Bent-Over Row",
+       "sets": 3,
+       "reps": 16,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "KB Goblet Squat",
+       "sets": 4,
+       "reps": 17,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "KB Single-Leg Deadlift",
+       "sets": 3,
+       "reps": 14,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "KB Lunge",
+       "sets": 3,
+       "reps": 14,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "Single-Leg Glute Bridge",
+       "sets": 3,
+       "reps": 12,
+       "weight": 5,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "KB Calf Raise",
+       "sets": 2,
+       "reps": 25,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "A"
+      },
+      {
+       "name": "Dead Bug",
+       "sets": 2,
+       "reps": 16,
+       "weight": 0,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "A"
+      },
+      {
+       "name": "Side Plank",
+       "sets": 2,
+       "reps": 45,
+       "weight": 0,
+       "trackType": "time",
+       "time": 65,
+       "supersetGroup": "A"
+      }
+     ]
+    },
+    {
+     "name": "Day 2",
+     "note": "",
+     "exercises": [
+      {
+       "name": "DB Floor Press",
+       "sets": 4,
+       "reps": 18,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "A"
+      },
+      {
+       "name": "DB Single-Arm Row",
+       "sets": 4,
+       "reps": 18,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "A"
+      },
+      {
+       "name": "DB Overhead Press",
+       "sets": 3,
+       "reps": 17,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "B"
+      },
+      {
+       "name": "DB Rear Delt Fly",
+       "sets": 3,
+       "reps": 14,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "B"
+      },
+      {
+       "name": "Push-Up",
+       "sets": 3,
+       "reps": 17,
+       "weight": 0,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "C"
+      },
+      {
+       "name": "DB Lateral Raise",
+       "sets": 3,
+       "reps": 13,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "C"
+      },
+      {
+       "name": "DB Hammer Curl",
+       "sets": 4,
+       "reps": 17,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "D"
+      },
+      {
+       "name": "DB Overhead Tricep Extension",
+       "sets": 4,
+       "reps": 16,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "D"
+      },
+      {
+       "name": "Dead Bug",
+       "sets": 2,
+       "reps": 17,
+       "weight": 0,
+       "trackType": "reps",
+       "time": 0
+      }
+     ]
+    },
+    {
+     "name": "Day 3",
+     "note": "",
+     "exercises": [
+      {
+       "name": "KB Goblet Squat",
+       "sets": 4,
+       "reps": 17,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "KB Romanian Deadlift",
+       "sets": 3,
+       "reps": 18,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "KB Glute Bridge",
+       "sets": 3,
+       "reps": 23,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "KB Lunge",
+       "sets": 3,
+       "reps": 15,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "KB Calf Raise",
+       "sets": 2,
+       "reps": 26,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "A"
+      },
+      {
+       "name": "Dead Bug",
+       "sets": 2,
+       "reps": 16,
+       "weight": 0,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "A"
+      },
+      {
+       "name": "Plank",
+       "sets": 2,
+       "reps": 45,
+       "weight": 0,
+       "trackType": "time",
+       "time": 65,
+       "supersetGroup": "A"
+      }
+     ]
+    },
+    {
+     "name": "Day 4",
+     "note": "",
+     "exercises": [
+      {
+       "name": "KB Floor Press",
+       "sets": 4,
+       "reps": 18,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "A"
+      },
+      {
+       "name": "DB Single-Arm Row",
+       "sets": 4,
+       "reps": 18,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "A"
+      },
+      {
+       "name": "DB Overhead Press",
+       "sets": 3,
+       "reps": 17,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "B"
+      },
+      {
+       "name": "DB Lateral Raise",
+       "sets": 3,
+       "reps": 13,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "B"
+      },
+      {
+       "name": "DB Concentration Curl",
+       "sets": 5,
+       "reps": 16,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "C"
+      },
+      {
+       "name": "KB Tricep Extension",
+       "sets": 4,
+       "reps": 14,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "C"
+      },
+      {
+       "name": "Dead Bug",
+       "sets": 2,
+       "reps": 16,
+       "weight": 0,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "D"
+      },
+      {
+       "name": "Side Plank",
+       "sets": 2,
+       "reps": 46,
+       "weight": 0,
+       "trackType": "time",
+       "time": 71,
+       "supersetGroup": "D"
+      }
+     ]
+    },
+    {
+     "name": "Day 5",
+     "note": "",
+     "exercises": [
+      {
+       "name": "KB Sumo Deadlift",
+       "sets": 3,
+       "reps": 14,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "KB Goblet Squat",
+       "sets": 3,
+       "reps": 14,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "KB Single-Leg Deadlift",
+       "sets": 3,
+       "reps": 12,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "Single-Leg Glute Bridge",
+       "sets": 3,
+       "reps": 9,
+       "weight": 5,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "KB Calf Raise",
+       "sets": 2,
+       "reps": 22,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "A"
+      },
+      {
+       "name": "Dead Bug",
+       "sets": 2,
+       "reps": 13,
+       "weight": 0,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "A"
+      },
+      {
+       "name": "Side Plank",
+       "sets": 2,
+       "reps": 45,
+       "weight": 0,
+       "trackType": "time",
+       "time": 55,
+       "supersetGroup": "A"
+      }
+     ]
+    },
+    {
+     "name": "Day 6",
+     "note": "",
+     "exercises": [
+      {
+       "name": "KB Goblet Squat",
+       "sets": 4,
+       "reps": 13,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "Push-Up",
+       "sets": 3,
+       "reps": 15,
+       "weight": 0,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "KB Lunge",
+       "sets": 3,
+       "reps": 12,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "DB Floor Press",
+       "sets": 3,
+       "reps": 13,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "Mountain Climber",
+       "sets": 3,
+       "reps": 21,
+       "weight": 0,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "DB Lateral Raise",
+       "sets": 3,
+       "reps": 15,
+       "weight": 5,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "Plank",
+       "sets": 2,
+       "reps": 45,
+       "weight": 0,
+       "trackType": "time",
+       "time": 50
+      }
+     ]
+    },
+    {
+     "name": "Day 7",
+     "note": "",
+     "exercises": [
+      {
+       "name": "KB Goblet Squat",
+       "sets": 4,
+       "reps": 12,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "KB Glute Bridge",
+       "sets": 3,
+       "reps": 17,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0
+      },
+      {
+       "name": "KB Lunge",
+       "sets": 3,
+       "reps": 12,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "A"
+      },
+      {
+       "name": "Single-Leg Glute Bridge",
+       "sets": 3,
+       "reps": 12,
+       "weight": 0,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "A"
+      },
+      {
+       "name": "KB Calf Raise",
+       "sets": 2,
+       "reps": 20,
+       "weight": 16,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "B"
+      },
+      {
+       "name": "Dead Bug",
+       "sets": 2,
+       "reps": 13,
+       "weight": 0,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "B"
+      },
+      {
+       "name": "Plank",
+       "sets": 2,
+       "reps": 45,
+       "weight": 0,
+       "trackType": "time",
+       "time": 45,
+       "supersetGroup": "B"
+      },
+      {
+       "name": "DB Zottman Curl",
+       "sets": 3,
+       "reps": 14,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "B"
+      }
+     ]
+    },
+    {
+     "name": "Day 8",
+     "note": "",
+     "exercises": [
+      {
+       "name": "DB Floor Press",
+       "sets": 4,
+       "reps": 14,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "A"
+      },
+      {
+       "name": "DB Single-Arm Row",
+       "sets": 4,
+       "reps": 16,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "A"
+      },
+      {
+       "name": "DB Overhead Press",
+       "sets": 3,
+       "reps": 14,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "B"
+      },
+      {
+       "name": "DB Lateral Raise",
+       "sets": 3,
+       "reps": 14,
+       "weight": 5,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "B"
+      },
+      {
+       "name": "DB Concentration Curl",
+       "sets": 5,
+       "reps": 14,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "C"
+      },
+      {
+       "name": "DB Floor Tate Press",
+       "sets": 4,
+       "reps": 14,
+       "weight": 10,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "C"
+      },
+      {
+       "name": "DB Floor Fly",
+       "sets": 2,
+       "reps": 14,
+       "weight": 5,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "D"
+      },
+      {
+       "name": "Dead Bug",
+       "sets": 2,
+       "reps": 14,
+       "weight": 0,
+       "trackType": "reps",
+       "time": 0,
+       "supersetGroup": "D"
+      },
+      {
+       "name": "Plank",
+       "sets": 2,
+       "reps": 45,
+       "weight": 0,
+       "trackType": "time",
+       "time": 55
+      }
+     ]
+    }
+   ],
+   "_progressionLog": {
+    "2_0": 1792199983912,
+    "2_1": 1793405436188,
+    "2_2": 1793405436188,
+    "2_4": 1793405436188,
+    "2_5": 1790995702293,
+    "2_6": 1789262446139,
+    "3_0": 1791676123122,
+    "3_1": 1788667971605,
+    "3_2": 1792899570176,
+    "3_3": 1792899570176,
+    "3_4": 1785631576113,
+    "3_5": 1791676123122,
+    "3_6": 1791070126146,
+    "3_7": 1792281686330,
+    "0_0": 1791273158953,
+    "0_1": 1793054544380,
+    "0_2": 1791273158953,
+    "0_4": 1793054544380,
+    "0_5": 1793054544380,
+    "0_6": 1793054544380,
+    "1_0": 1793261125669,
+    "1_1": 1793261125669,
+    "1_2": 1793261125669,
+    "1_3": 1793261125669,
+    "1_4": 1792051412955,
+    "1_5": 1793261125669,
+    "1_6": 1789029155821,
+    "1_7": 1787216006852,
+    "1_8": 1793261125669,
+    "7_0": 1789265161746,
+    "7_1": 1789265161746,
+    "7_2": 1789265161746,
+    "7_3": 1789265161746,
+    "7_4": 1789265161746,
+    "7_5": 1789265161746,
+    "7_6": 1789265161746,
+    "7_7": 1789265161746,
+    "7_8": 1789265161746,
+    "4_0": 1788215421708,
+    "4_1": 1788215421708,
+    "4_2": 1788215421708,
+    "4_3": 1788215421708,
+    "4_4": 1788215421708,
+    "4_5": 1786401478565,
+    "4_6": 1788215421708,
+    "0_7": 1793054544380,
+    "2_3": 1792199983912,
+    "0_3": 1790031445317,
+    "5_0": 1788851607751,
+    "5_3": 1788851607751,
+    "5_4": 1788851607751,
+    "5_5": 1788851607751,
+    "5_6": 1788851607751
+   }
+  }
+ ],
+ "profile": {
+  "name": "Test User",
+  "age": 30,
+  "sex": "male",
+  "weight": 80,
+  "goal": "lose_fat",
+  "activity": "active",
+  "equipment": {
+   "dumbbells": [
+    5,
+    10
+   ],
+   "kettlebells": [
+    10,
+    16
+   ]
+  }
+ },
+ "favourites": []
+}
