@@ -1,6 +1,6 @@
 # Import preview, confirm, Undo and export labelling (T7b)
 
-Status: **Draft, waiting for James's approval in chat.** No T7b UI edit may start before the Approval line below is filled in by the main session. Author: product-designer, 2026-11-03. Branch `claude/t7-import-preview-spec`.
+Status: **Approved by james585 on 2026-11-04, in chat.** Answers: Q1 the too-large backup saves the full export as `HomeBody_full_<YYYY-MM-DD>.txt`, labelled not importable today; Q2 the save bar's `Export` reads `Export this session` in states 6 to 8 (K30; amends write-failure-banner.md, see its dated amendment); Q3 Undo lasts until reload; Q4 the user taps Restart after Undo, no automatic reload; Q5 the import sheet and dialogs sit at z 9800, above the FAB; Q6 plans-only imports also get Undo; Q7 problem lists show positions only, never values. Author: product-designer, 2026-11-03. Branch `claude/t7-import-preview-spec`.
 Plan: docs/plans/m1/T7.md (approved 2026-11-03). Related: docs/design/write-failure-banner.md (approved; bar patterns, live regions, push rule), docs/design/update-notice.md (update card), docs/design/design-system.md and tokens.json on `claude/design-system-m2` (proposal; tokens, components, z-scale), docs/security.md.
 Principles: 1 (Merge default, Replace explicit, snapshot, Undo), 2 (calm, plain, no claims), 4 (exports are labelled as health data), 5 (works offline; nothing interrupts a workout), 7 (the logging path is not touched), 8 (imported text is data: text nodes only).
 
@@ -70,7 +70,8 @@ This is load-bearing and is checked by acceptance checks A20 to A23.
 | E3 | `Import plans only` | same card | File picker, then the plans-only sheet (4.10); only plans are added |
 | E4 | `Undo import` | the import success state, and a row in the card for the rest of the session (4.8) | Undo flow (4.9) |
 | E5 | `Export` in the save-problem bar | bar states 2, 4 (row), 6, 7, 8 | As E1; in states 6 to 8 it is a **partial** export (5.3) |
-| E6 | `Export saved file` | bar states 6 to 8; and the card in those states (3.2); and the export-too-large sheet (5.4) | Raw "as found" `.txt` (5.5) |
+| E6 | `Export saved file` | bar states 6 to 8; and the card in those states (3.2) | Raw "as found" `.txt` (5.5) |
+| E7 | `Save as text file` | the export-too-large sheet (5.4) | Full export as `HomeBody_full_<YYYY-MM-DD>.txt`, not importable today |
 
 ### 3.1 Profile, Data & Backup card (normal state)
 
@@ -123,7 +124,7 @@ Replaces the card at index.html ~691-706. Same position in Profile. The `Replay 
 
 ## 4. Import flow
 
-One bottom sheet, `#hb-io-sheet`, hosts every import state; only its content changes. It is a `.modal-overlay` (so the save-bar push rule already moves it) at **z-index 9800** (`--z-dialog`), not 200. Reason: the FAB is at 9600 and covers the right end of sheet buttons at 200 (K23: a real tap on "Confirm Import" opened the FAB tray). At 9800 the sheet and its scrim sit above the FAB, below toasts (9950) and the save bar (10000). See Q5.
+One bottom sheet, `#hb-io-sheet`, hosts every import state; only its content changes. It is a `.modal-overlay` (so the save-bar push rule already moves it) at **z-index 9800** (`--z-dialog`), not 200. Reason: the FAB is at 9600 and covers the right end of sheet buttons at 200 (K23: a real tap on "Confirm Import" opened the FAB tray). At 9800 the sheet and its scrim sit above the FAB, below toasts (9950) and the save bar (10000). (Decision 5.)
 
 Sheet frame (all states):
 - `--surface` fill, top corners 20 px (system `--radius-2xl` 28 px in M2), grab handle 36 x 4 px (decorative only; **no swipe-down close**), max-height `calc(92dvh - var(--hb-bar-h, 0px))`, content max-width 520 px centred.
@@ -336,7 +337,7 @@ After the sheet closes, until the page is reloaded or Undo has run, the Data & B
 ```
 | (i) Imported today at 14:02.  [ UNDO IMPORT ]|   row, 48px button, secondary
 ```
-Text `io.card.undoRow`. If the import was on an earlier calendar day than now (a session left open overnight), `io.card.undoRowDate`. The row disappears after a successful Undo (the app restarts anyway) and on reload. See Q3 for why Undo is session-only.
+Text `io.card.undoRow`. If the import was on an earlier calendar day than now (a session left open overnight), `io.card.undoRowDate`. The row disappears after a successful Undo (the app restarts anyway) and on reload. Undo lasts until reload (Decision 3).
 
 ### 4.9 Undo
 Availability: the button is shown only if this session completed an import, the store is writable, and that import's `pre-import` snapshot id is known. At tap:
@@ -382,7 +383,7 @@ Availability: the button is shown only if this session completed an import, the 
 |              [      RESTART       ]         |  primary, full width
 +---------------------------------------------+
 ```
-`Restart` (`io.btn.restart`) calls `location.reload()`. This is the one state with no way out except Restart, because the app cannot save until it restarts; the body says so, and Escape, scrim and Close are absent rather than silently ignored (no Close button is rendered). Focus moves to the title, then Tab reaches only `Restart`. See Q4 (automatic restart).
+`Restart` (`io.btn.restart`) calls `location.reload()`. This is the one state with no way out except Restart, because the app cannot save until it restarts; the body says so, and Escape, scrim and Close are absent rather than silently ignored (no Close button is rendered). Focus moves to the title, then Tab reaches only `Restart`. No automatic reload (Decision 4).
 
 Undo failures:
 | State | When | Title | Body | Buttons |
@@ -423,7 +424,7 @@ Same sheet and states as the full import, with these differences:
 - No plans in the file: refusal P0 (`io.plan.none.title` / `io.plan.none`).
 - Warnings shown here: only `io.warn.future`, `io.warn.dropped` (plans only), and `io.warn.mirror`.
 - Primary `io.btn.addPlans` (singular / plural); busy `io.btn.adding`.
-- Done state: `io.plandone.title`, `io.plandone.body` (+ `io.plandone.present` when some were already there), `io.done.copyKept`, Undo button and `io.done.undoUntil` as in 4.7. Footer primary `io.btn.showPlans` (closes the sheet and opens Plans, My plans tab); `Close` in the header just closes. See Q6.
+- Done state: `io.plandone.title`, `io.plandone.body` (+ `io.plandone.present` when some were already there), `io.done.copyKept`, Undo button and `io.done.undoUntil` as in 4.7. Footer primary `io.btn.showPlans` (closes the sheet and opens Plans, My plans tab); `Close` in the header just closes. Plans-only has Undo (Decision 6).
 
 ### 4.11 Refusals and failures (every one in the plan)
 Each is a state of the same sheet: a marker + title + body, then the footer. Unless stated: footer is a single full-width secondary `Close`, the marker is circle `!` in `--danger`, and the body ends by saying nothing was changed.
@@ -491,7 +492,7 @@ Title `io.xw.title`, body `io.xw.body`, list (6.4), footer `Done`. The toast is 
 
 ### 5.3 Partial export (K30; save-bar states 6, 7, 8)
 - Filename `HomeBody_partial_<YYYY-MM-DD>.vaultfit`; the file carries `_partial`.
-- Card label `Export this session` (3.2); the bar's `Export` label: see Q2.
+- Card label `Export this session` (3.2), and the save bar's `Export` button also reads `Export this session` (`io.btn.exportSession`) in bar states 6, 7 and 8 (Decision 2; write-failure-banner.md amendment 2026-11-04). In bar states 2 and 4 it stays `Export`.
 - Toast `io.xp.toast`, also written to `#hb-io-status` and, when the export came from the bar, to the bar's own polite status region.
 - When imported later, the preview shows `io.warn.partial` and Replace is unavailable (4.4).
 
@@ -505,15 +506,17 @@ Title `io.xw.title`, body `io.xw.body`, list (6.4), footer `Done`. The toast is 
 | file that couldn't be restored. Nothing has |
 | changed.                                    |
 | To keep a full copy anyway, save it as a    |
-| text file. HomeBody can't import that file  |
-| today, but nothing in it is lost.           |
+| text file. It holds everything, but         |
+| HomeBody can't import it today.             |
 | (i) It holds your health data. Keep it      |
 |     private.                                |
 +---------------------------------------------+
 | [   CLOSE   ]      [ SAVE AS TEXT FILE ]    |
 +---------------------------------------------+
 ```
-Title `io.xc.title`, body `io.xc.body`, health line `io.health.short`, primary `io.btn.saveText`. What that button downloads is **Q1** (must be decided: the raw mirror is stale at this size). Mid-workout layer open: toast `io.xc.toastWorkout` only.
+Title `io.xc.title`, body `io.xc.body`, health line `io.health.short`, primary `io.btn.saveText`. Mid-workout layer open: toast `io.xc.toastWorkout` only.
+
+**What `Save as text file` saves (Decision 1):** the full export, the same content `buildExport` would have produced, without the 20 MB cap, as a `text/plain` file named `HomeBody_full_<YYYY-MM-DD>.txt` (same date rule as 5.1; no profile name). It is **not** the `vaultfit_v1` as-found copy, which has stopped updating at this size. After the download: toast `io.xc.toastSaved`, also written to `#hb-io-status`, and the sheet closes. If that download fails: toast `io.x.failed`.
 
 ### 5.5 Raw "as found" export (`Export saved file`)
 - Label `Export saved file` (approved, unchanged), filename `homebody-saved-data-as-found.txt` (unchanged), read-only.
@@ -770,7 +773,8 @@ The validator returns at most 20 problems. If 20 are shown, add `io.list.first20
 | `io.xw.toastWorkout` | `Backup saved. Some entries won't import: see Profile after your workout.` |
 | `io.xp.toast` | `Partial backup saved: only what HomeBody has this session. Keep the file private.` |
 | `io.xc.title` | `Backup too large` |
-| `io.xc.body` | `Your history is bigger than HomeBody can import (20 MB), so it hasn't made a backup file that couldn't be restored. Nothing has changed. To keep a full copy anyway, save it as a text file. HomeBody can't import that file today, but nothing in it is lost.` |
+| `io.xc.body` | `Your history is bigger than HomeBody can import (20 MB), so it hasn't made a backup file that couldn't be restored. Nothing has changed. To keep a full copy anyway, save it as a text file. It holds everything, but HomeBody can't import it today.` |
+| `io.xc.toastSaved` | `Full copy saved as a text file. HomeBody can't import it today. Keep it private.` |
 | `io.xc.toastWorkout` | `Backup not made: too large. See Profile after your workout.` |
 | `io.raw.toast` | `Saved file downloaded. It holds your health data. Keep it private.` |
 | `io.x.failed` | `Couldn't make the backup. Nothing was changed. Try again.` |
@@ -854,7 +858,7 @@ Run in Chromium at 375x667, 390x844 and 430x932, dark and light, unless stated; 
 Entry and card
 - A1 The card shows exactly `io.card.intro`, `io.health.label`, `io.card.fileName` (with today's date under the frozen clock), the three buttons and `io.card.importNote`; no emoji in these buttons; computed text colour of every line is `--text`.
 - A2 `io.card.fileName` text equals the `download` attribute of the exported link, which matches `^HomeBody_\d{4}-\d{2}-\d{2}\.vaultfit$` and contains no profile name.
-- A3 In seeded save-bar states 6, 7, 8: the card shows `Export this session`, `Export saved file` and `io.card.rawNote`; the export filename matches `^HomeBody_partial_\d{4}-\d{2}-\d{2}\.vaultfit$` and the file has `_partial: true`.
+- A3 In seeded save-bar states 6, 7, 8: the save bar's export button reads `Export this session` (and `Export` in states 2 and 4); the card shows `Export this session`, `Export saved file` and `io.card.rawNote`; the export filename matches `^HomeBody_partial_\d{4}-\d{2}-\d{2}\.vaultfit$` and the file has `_partial: true`.
 
 Pre-checks and refusals
 - A4 With `hb_active_workout` seeded: tapping Import backup opens R1 and **no file chooser event fires** (`page.on('filechooser')` not called). Same for Import plans only. Same with seeded read-only (R2), fallback engine (R3), `hbLoadedOk` false (R4).
@@ -893,6 +897,7 @@ Layout, a11y, motion, workout
 - A29 `prefers-reduced-motion: reduce`: the sheet and dialogs have `transition-duration` 0 and no transform animation; the I2 state contains no animated element in either mode.
 - A30 Contrast: computed colours of title, body, buttons, markers, radio edges and the danger confirm meet 7.6 in both themes.
 - A31 Logging a set in the workout layer still takes the same taps as before (existing tap-count check passes unchanged); the goldens, `offline`, `update` and `idb` specs pass unchanged.
+- A33 Too-large export (stub `buildExport`'s size check to refuse): the 5.4 sheet shows `io.xc.title` and `io.xc.body`, nothing downloads until `Save as text file` is tapped; then exactly one `text/plain` download named `^HomeBody_full_\d{4}-\d{2}-\d{2}\.txt$` whose content parses to the full in-memory export (not the `vaultfit_v1` text), and the toast reads `io.xc.toastSaved`.
 - A32 Offline (context offline after first load, modules precached): the full import, Undo and export flows work.
 
 ---
@@ -906,15 +911,15 @@ Layout, a11y, motion, workout
 
 ---
 
-## 11. Open questions for James (recommendation first)
+## 11. Decisions (James, 2026-11-04, in chat)
 
-1. **What "Save as text file" saves when the backup is too large (5.4).** The plan says the refusal names the raw `.txt` export, but that file is the `vaultfit_v1` plain copy, and at this size that copy has already stopped updating (the 512K ceiling), so it would be an old copy presented as the way to keep everything. **Recommend:** the button saves the full export (the same content `buildExport` would have produced, without the cap) as `HomeBody_full_<YYYY-MM-DD>.txt`, labelled as not importable today. Alternative: offer the as-found file with the `io.card.rawNoteStale` wording ("may be older than what you see").
-2. **Partial label in the save bar (K30).** In bar states 6 to 8, `Export` makes a partial backup. **Recommend:** relabel the bar's `Export` to `Export this session` in those three states (a one-word change to approved bar copy; the card already uses it), plus the partial filename and toast. Alternative: keep the approved bar label and rely on the filename and toast only.
-3. **How long Undo lasts.** **Recommend:** for the rest of the session (until reload), from the success state and the card row; after that, T8's restore list covers it. Alternative: keep Undo across reloads until the next import (needs the snapshot id and commit seq stored, which is T8-shaped work).
-4. **Restart after Undo.** **Recommend:** a Restart button the user taps (U4), no automatic reload, so a screen-reader user hears what happened first. Alternative: reload automatically 3 s after Undo with the same text shown.
-5. **Import sheet layer.** **Recommend:** put the import sheet and its dialogs at 9800 (`--z-dialog`), above the FAB, which fixes K23 for this flow without touching FAB code. Alternative: keep 200 and hide the FAB while any sheet is open (the general K23 fix, wider scope).
-6. **Undo for plans-only imports.** **Recommend:** yes, the same Undo (it is the same snapshot and costs nothing extra). Alternative: no Undo for plans-only; the user deletes unwanted plans by hand.
-7. **Export warning paths.** **Recommend:** positions only (`Workout 13 · exercise 4 · name`), never values, for both import and export. Alternative: for export only (the user's own data), add the workout date to help find the entry, accepting a small difference between the two lists.
+1. **Too-large backup:** `Save as text file` saves the full export as `HomeBody_full_<YYYY-MM-DD>.txt`, labelled not importable today (5.4). Not the as-found copy, which is stale at that size.
+2. **Partial label (K30):** the save bar's `Export` reads `Export this session` in states 6 to 8 (5.3); recorded as a dated amendment in write-failure-banner.md.
+3. **Undo lifetime:** until reload, from the success state and the card row (4.8). After that, T8's restore list.
+4. **After Undo:** the user taps Restart (U4); no automatic reload.
+5. **Layer:** the import sheet and its dialogs are at z 9800 (`--z-dialog`), above the FAB (section 8).
+6. **Plans-only:** gets the same Undo (4.10).
+7. **Problem lists:** positions only, never values, for import and export (6.4).
 
 ## Approval
-Approval: (pending; to be recorded by the main session as "Approved by <human> on <date>, in chat")
+Approved by james585 on 2026-11-04, in chat (answers in section 11).
