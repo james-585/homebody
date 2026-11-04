@@ -6,6 +6,10 @@
 // publishes window.HB and starts the app. Nothing here runs I/O at load except the boot block.
 (function () {
   'use strict';
+  // The URL of this script, captured now: document.currentScript is null in later async code. The
+  // lazy import/export modules are resolved against it (T7).
+  const SCRIPT_SRC =
+    typeof document !== 'undefined' && document.currentScript ? document.currentScript.src : null;
 
   // ---- migrate: pure runner -------------------------------------------------------------------
   // Migration runner (pure: no I/O, no clock). Contract in ADR 0002 and tests/unit/helpers/
@@ -96,6 +100,19 @@
   const ACTIVE_KEY = 'hb_active_workout';
   const DB_NAME = 'homebody';
 
+  // ---- bounds (T7) -------------------------------------------------------------------------------
+  // Counters: seq and hbSeq are integers in [0, MAX_SEQ]. Anything else read from storage is corrupt,
+  // and nothing in this file writes a number above it (K39). A mirror whose hbSeq is more than
+  // SEQ_JUMP past IndexedDB's seq is treated as corrupt too (a real gap is a few commits).
+  const MAX_SEQ = 2147483647; // 2^31 - 1: ten digits at most
+  const SEQ_JUMP = 1000000;
+  const HBSEQ_CORRUPT = 'corrupt'; // hbSeqOf: a token is there but is not a valid counter
+  // One ceiling for every mirror write (James, T7 Q2): above it the mirror is left as it is and
+  // status().mirror says 'stale'. Never applied to the localStorage fallback engine's own writes.
+  const MIRROR_CEILING = 512 * 1024; // characters of mirror text
+  const IMPORT_MAX_BYTES = 20 * 1024 * 1024; // must equal LIMITS.maxBytes in src/storage/validate.js
+  const IO_API_VERSION = 1; // must equal IO_API_VERSION in src/storage/validate.js (skew guard)
+
   /** Every key the app keeps on the device: the one list "delete all my data" must use. */
   const KEYS = Object.freeze({
     localStorage: Object.freeze([
@@ -128,11 +145,23 @@
     return `${t.length}:${(h >>> 0).toString(16)}`;
   }
 
-  /** hbSeq from the tail of a mirror text without parsing it (null when absent). */
+  /**
+   * hbSeq from the tail of a mirror text without parsing it. null = no hbSeq token as the last key
+   * (unmarked); an integer in [0, MAX_SEQ]; or HBSEQ_CORRUPT when a token is there but is negative,
+   * a string, an exponent, too long or above MAX_SEQ. A corrupt token is never read as "absent".
+   */
   function hbSeqOf(raw) {
-    const m = typeof raw === 'string' ? /,?"hbSeq":(\d{1,15})\}$/.exec(raw.slice(-40)) : null;
-    return m ? Number(m[1]) : null;
+    if (typeof raw !== 'string') return null;
+    const at = raw.lastIndexOf('"hbSeq":'); // a raw quote cannot occur inside a JSON string
+    if (at < 1 || (raw[at - 1] !== ',' && raw[at - 1] !== '{')) return null;
+    const m = /^"hbSeq":("[^"\\]*"|[^,{}[\]"]*)\}$/.exec(raw.slice(at));
+    if (!m) return null;
+    if (!/^(0|[1-9]\d{0,9})$/.test(m[1])) return HBSEQ_CORRUPT;
+    const n = Number(m[1]);
+    return n <= MAX_SEQ ? n : HBSEQ_CORRUPT;
   }
+
+  const seqOk = (n) => Number.isInteger(n) && n >= 0 && n <= MAX_SEQ;
 
   // ---- engine-local: the only code touching localStorage for app data ----------------------------
   // localStorage engine: the only code that touches localStorage for app data. An engine is
@@ -197,7 +226,7 @@
           if (!m || typeof m !== 'object' || Array.isArray(m)) return {};
           const out = {};
           if (typeof m.persistAskedAt === 'number') out.persistAskedAt = m.persistAskedAt;
-          if (Number.isInteger(m.idbSeq) && m.idbSeq >= 0) out.idbSeq = m.idbSeq;
+          if (seqOk(m.idbSeq)) out.idbSeq = m.idbSeq;
           if (
             ['unsupported', 'error'].includes(m.persistGranted) ||
             typeof m.persistGranted === 'boolean'
@@ -395,7 +424,7 @@
           : null;
       }
       const sv = meta.schemaVersion;
-      if (!Number.isInteger(sv) || sv < 1 || typeof meta.seq !== 'number' || !isFinite(meta.seq)) {
+      if (!Number.isInteger(sv) || sv < 1 || !seqOk(meta.seq)) {
         return { doc: null, raw: null, seq: null, meta, corrupt: true };
       }
       const doc = { workouts: w };
@@ -477,7 +506,12 @@
           const mt = tx.objectStore('meta');
           const sn = tx.objectStore('snapshots');
           if (extra) sn.add(snapshotRecord(extra));
-          if (o.snapshot) sn.add(snapshotRecord(o.snapshot));
+          if (o.snapshot) {
+            const added = sn.add(snapshotRecord(o.snapshot));
+            added.onsuccess = safe(() => {
+              result.snapshotId = added.result; // lets a caller (import) offer Undo
+            });
+          }
           wk.clear();
           const ws = Array.isArray(doc.workouts) ? doc.workouts : [];
           for (let i = 0; i < ws.length; i++) wk.put(ws[i] ?? null, i); // holes become null, as in JSON
@@ -488,6 +522,7 @@
           // meta.seq never goes backwards: past whatever was there, unless it is our own late retry
           const floor = typeof sq.result === 'number' && !ownRetry() ? sq.result + 1 : 0;
           result.seq = Math.max(o.seq ?? 0, floor);
+          if (!seqOk(result.seq)) refuse('corrupt'); // MAX_SEQ: abort, nothing is written
           mt.put(target, 'schemaVersion');
           mt.put(result.seq, 'seq');
           // every document write sets or clears the tag, so another tab's import or restore is
@@ -512,13 +547,8 @@
           const v = sv.result;
           if (v === undefined) {
             if (wc.result > 0 || rcnt.result > 0) refuse('corrupt'); // data without meta
-          } else if (
-            !Number.isInteger(v) ||
-            v < 1 ||
-            typeof sq.result !== 'number' ||
-            !isFinite(sq.result)
-          ) {
-            refuse('corrupt');
+          } else if (!Number.isInteger(v) || v < 1 || !seqOk(sq.result)) {
+            refuse('corrupt'); // includes a seq that is not an integer or is above MAX_SEQ
           } else if (v > target) refuse('future');
           if (o.ifUnmigrated) {
             if (v !== undefined) result.skipped = true;
@@ -691,6 +721,11 @@
     if (stored && stored.doc.schemaVersion > current) return { action: 'readonly', kind: 'future' };
     if (!stored) return mirrorRaw ? { action: 'migrate' } : { action: 'empty' };
     if (!mirrorRaw) return { action: 'use-idb', mirror: 'missing' };
+    // A counter that is not a valid integer, or absurdly far ahead, is corrupt (K39): the mirror is
+    // ignored (IndexedDB wins, no import) and rewritten; the store keeps its text first if it differs.
+    if (mirrorSeq === HBSEQ_CORRUPT || (mirrorSeq !== null && mirrorSeq > stored.seq + SEQ_JUMP)) {
+      return { action: 'use-idb', mirror: 'stale', rewriteMirror: true, ignoredMirror: true };
+    }
     const idbNewer = rendered
       ? { action: 'readonly', kind: 'stale', rewriteMirror: true }
       : { action: 'use-idb', mirror: 'stale', rewriteMirror: true };
@@ -710,6 +745,7 @@
    * Unmarked: no commit has ever been noted (any noted commit means the mirror may have missed it).
    */
   function canFastBoot({ mirrorSeq, sidecar }) {
+    if (mirrorSeq === HBSEQ_CORRUPT) return false;
     return mirrorSeq !== null ? sidecar.idbSeq === mirrorSeq : sidecar.idbSeq === undefined;
   }
 
@@ -727,7 +763,7 @@
   /**
    * @param {{openEngines: Array<() => object|Promise<object>>, migrations?: Array, current?: number,
    *          retryDelayMs?: number, setTimer?: Function, now?: () => number, nav?: object,
-   *          fastBoot?: boolean, attachTimeoutMs?: number}} opts
+   *          fastBoot?: boolean, attachTimeoutMs?: number, loadIo?: Function}} opts
    *   openEngines: ordered factories; the first that opens and reads wins. When that is the
    *   IndexedDB engine, the first localStorage engine in the list is also opened (the v1 mirror).
    */
@@ -742,6 +778,7 @@
     nav = null, // navigator-like { storage: { persist, persisted } }; never required
     fastBoot = false, // boot from the mirror when it is provably not older than IndexedDB
     attachTimeoutMs = 8000, // attach() as a whole
+    loadIo = null, // () => Promise<module>: the lazy import/export module (T7); never required
   }) {
     let engine = null; // where documents are read and written
     let local = null; // the localStorage engine (the v1 mirror when `engine` is IndexedDB)
@@ -772,7 +809,8 @@
     const ready = new Promise((r) => (resolveReady = r));
 
     // The mirror and sidecar are only maintained by an IndexedDB session (or a restore in progress).
-    const mirrorLive = () => idbMode() || readOnlyKind === 'restoring';
+    const mirrorLive = () =>
+      idbMode() || readOnlyKind === 'restoring' || readOnlyKind === 'importing';
     const idbMode = () => boot === 'provisional' || boot === 'attached';
     const canWrite = () => boot === 'kv' || boot === 'attached';
     const kinded = (kind) => Object.assign(new Error(kind), { kind });
@@ -842,11 +880,17 @@
       }
     }
 
-    /** Write the mirror as projectToV1(d) + hbSeq. */
+    /** Write the mirror as projectToV1(d) + hbSeq (through the one gate, mirrorText). */
     function stampMirror(d, n) {
       if (!local || !mirrorLive()) return; // work that outlived its session must not touch the mirror
       try {
-        local.write(STORAGE_KEY, JSON.stringify({ ...projectToV1(d), hbSeq: n })).then(
+        const p = projectToV1(d);
+        const body = mirrorText(JSON.stringify(p), p, n);
+        if (body === null) {
+          mirror = 'stale'; // over the ceiling or a bad counter: the existing mirror is left as it is
+          return;
+        }
+        local.write(STORAGE_KEY, body).then(
           () => (mirror = 'ok'),
           () => (mirror = 'stale'),
         );
@@ -855,13 +899,35 @@
       }
     }
 
-    /** The mirror text: the payload's own JSON with hbSeq appended (no second serialisation). */
+    /**
+     * THE gate for every mirror write (stampMirror, renumberMirror, restampMirror, the save path,
+     * including provisional plain writes). The mirror text is the payload's own JSON with hbSeq
+     * appended (no second serialisation); n null/undefined = a plain write with no counter.
+     * Returns null when the write must not happen: the counter is not an integer in [0, MAX_SEQ]
+     * (K39), or the text is over MIRROR_CEILING (then the existing mirror stays as it is, and the
+     * caller reports mirror 'stale'). Never used for the localStorage fallback engine's own writes
+     * or for the legacy-key adoption, where refusing would drop the only copy.
+     */
     function mirrorText(text, payload, n) {
-      const plain = payload && typeof payload === 'object' && !Array.isArray(payload);
-      if (plain && Object.keys(payload).every((k) => V1_KEYS.includes(k)) && text.startsWith('{')) {
-        return text.length > 2 ? `${text.slice(0, -1)},"hbSeq":${n}}` : `{"hbSeq":${n}}`;
+      if (text.length > MIRROR_CEILING) return null;
+      let out;
+      if (n === null || n === undefined) {
+        out = text;
+      } else if (!seqOk(n)) {
+        return null;
+      } else {
+        const plain = payload && typeof payload === 'object' && !Array.isArray(payload);
+        if (
+          plain &&
+          Object.keys(payload).every((k) => V1_KEYS.includes(k)) &&
+          text.startsWith('{')
+        ) {
+          out = text.length > 2 ? `${text.slice(0, -1)},"hbSeq":${n}}` : `{"hbSeq":${n}}`;
+        } else {
+          out = JSON.stringify({ ...projectToV1(plain ? payload : {}), hbSeq: n });
+        }
       }
-      return JSON.stringify({ ...projectToV1(plain ? payload : {}), hbSeq: n });
+      return out.length > MIRROR_CEILING ? null : out;
     }
 
     /** Copy the first legacy key that has data into vaultfit_v1. The legacy key is never removed. */
@@ -943,6 +1009,40 @@
     }
 
     /**
+     * A mirror with a corrupt counter is ignored (IndexedDB wins). Before it is overwritten, its
+     * text is kept as a pre-reconcile snapshot when it differs from what IndexedDB holds, so
+     * nothing is lost. Resolves false when the text should not be overwritten (it could not be
+     * kept). Nothing is overwritten, so nothing is kept, when the gate would refuse the rewrite.
+     */
+    async function keepIgnoredMirror(e, stored, raw) {
+      const p = projectToV1(stored.doc);
+      if (mirrorText(JSON.stringify(p), p, stored.seq) === null) return true; // rewrite refused anyway
+      let same = false;
+      try {
+        const m = JSON.parse(raw);
+        if (m && typeof m === 'object' && !Array.isArray(m)) {
+          delete m.hbSeq;
+          same = sameDoc(m, stored.doc);
+        }
+      } catch {
+        /* unparseable: kept as text */
+      }
+      if (same) return true;
+      try {
+        await e.addSnapshot({
+          reason: 'pre-reconcile',
+          schemaVersion: 1,
+          keep: false,
+          payload: raw,
+          createdAt: now(),
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    /**
      * Decide and execute. `raw` is the mirror text (or what the page was rendered from). Returns
      * the document the session runs on. Throws if an IndexedDB write failed (caller falls back).
      */
@@ -1004,6 +1104,10 @@
           }
           default: // 'use-idb'
             if (d.mirror === 'stale') mirror = 'stale';
+            if (d.ignoredMirror && !lastPlain && !(await keepIgnoredMirror(e, stored, raw))) {
+              return stored.doc; // could not keep the ignored text: leave the mirror as found
+            }
+            check();
             if (d.rewriteMirror && !lastPlain) stampMirror(stored.doc, stored.seq);
             if (d.mirror === 'ok' && mseq !== null) noteCommitted(stored.seq);
             return stored.doc;
@@ -1326,9 +1430,12 @@
     function renumberMirror(job) {
       if (!local || !mirrorLive() || queued) return;
       try {
-        local
-          .write(STORAGE_KEY, mirrorText(job.text, JSON.parse(job.text), job.committedSeq))
-          .catch(() => (mirror = 'stale'));
+        const body = mirrorText(job.text, JSON.parse(job.text), job.committedSeq);
+        if (body === null) {
+          mirror = 'stale';
+          return;
+        }
+        local.write(STORAGE_KEY, body).catch(() => (mirror = 'stale'));
       } catch {
         mirror = 'stale';
       }
@@ -1340,9 +1447,17 @@
       const t = lastPlain;
       lastPlain = null;
       try {
-        const body = t.spliceable
-          ? mirrorText(t.text, { workouts: 1 }, job.seq)
-          : JSON.stringify({ ...projectToV1(JSON.parse(t.text)), hbSeq: job.seq });
+        let body;
+        if (t.spliceable) {
+          body = mirrorText(t.text, { workouts: 1 }, job.seq);
+        } else {
+          const p = projectToV1(JSON.parse(t.text));
+          body = mirrorText(JSON.stringify(p), p, job.seq);
+        }
+        if (body === null) {
+          mirror = 'stale'; // the provisional plain write was refused too; the old mirror stays
+          return;
+        }
         local.write(STORAGE_KEY, body).then(
           () => (mirror = 'ok'),
           () => (mirror = 'stale'),
@@ -1446,10 +1561,15 @@
           lastPlain = null;
         }
         if (local) {
-          const p = local.write(STORAGE_KEY, provisional ? text : mirrorText(text, payload, n));
-          mirror = p.syncError ? 'stale' : 'ok';
-          if (p.syncError) console.warn('HomeBody: v1 mirror not written');
-          p.catch(() => {});
+          const body = provisional ? mirrorText(text, null, null) : mirrorText(text, payload, n);
+          if (body === null) {
+            mirror = 'stale'; // over the ceiling: no plain text is written, the old mirror stays
+          } else {
+            const p = local.write(STORAGE_KEY, body);
+            mirror = p.syncError ? 'stale' : 'ok';
+            if (p.syncError) console.warn('HomeBody: v1 mirror not written');
+            p.catch(() => {});
+          }
         }
       }
       return new Promise((res, rej) => {
@@ -1600,6 +1720,158 @@
       }
     }
 
+    // ---- import, undo, export (T7). The pure work (validate, merge, summarise, build) lives in the
+    // lazily loaded module src/storage/import-export.js; everything that touches storage is here. -----
+    const activeWorkout = () => {
+      try {
+        return !!(local && local.read(ACTIVE_KEY));
+      } catch {
+        return false; // unreadable: treated as none, as restore does
+      }
+    };
+
+    /** The lazy module, or a refusal. Never falls back to any older import path. */
+    async function getIo() {
+      if (!loadIo) throw kinded('io-unavailable');
+      let m;
+      try {
+        m = await loadIo();
+      } catch {
+        throw kinded('io-unavailable'); // no detail is kept: it could echo a URL or file content
+      }
+      if (!m || m.IO_API_VERSION !== IO_API_VERSION || m.LATEST_SCHEMA !== current) {
+        throw kinded('io-skew'); // old page, new modules (or the reverse): reload
+      }
+      return m;
+    }
+
+    /** Validate raw file text. Throws kind 'invalid' with {reason, where, problems} (no values). */
+    function validateText(io, text) {
+      const v = io.validate(text, {
+        now: now(),
+        migrate: (d) => runMigrations(migrations, d, { current }),
+      });
+      if (!v.ok) {
+        throw Object.assign(kinded('invalid'), {
+          reason: v.reason,
+          where: v.where,
+          problems: v.problems,
+        });
+      }
+      return v;
+    }
+
+    /** What would change, for both modes. Writes nothing. Refuses where an import would be refused. */
+    async function previewImport(text) {
+      const io = await getIo();
+      const v = validateText(io, text);
+      await usable();
+      if (doc === null) throw kinded('not-loaded');
+      await settled();
+      const cur = await engine.readDoc();
+      if (cur && cur.corrupt) throw kinded('corrupt');
+      const curDoc = cur ? cur.doc : { workouts: [] };
+      return {
+        summary: io.summarize(curDoc, v, { mirrorCeiling: MIRROR_CEILING }),
+        partial: v.partial,
+      };
+    }
+
+    /**
+     * Import file text. ALWAYS validates the raw text itself (there is no "already validated"
+     * input), then, under the same kind of lock restore uses, merges against what IndexedDB holds
+     * NOW (never against the caller's in-memory state), and writes data + `pre-import` snapshot +
+     * meta in ONE transaction (expectSeq, skipOnMismatch). Resolves {snapshotId, seq, doc, counts}:
+     * the caller replaces its state from `doc` in the same tick. The store is writable again only
+     * when this resolves or fails; on any failure it is released (unless the data is corrupt/newer).
+     */
+    async function importDoc(text, { mode = 'merge' } = {}) {
+      if (mode !== 'merge' && mode !== 'replace') throw kinded('bad-mode');
+      const io = await getIo();
+      const v = validateText(io, text);
+      if (mode === 'replace' && v.partial.partial) throw kinded('partial-replace');
+      await usable(); // IndexedDB engine only (the fallback engine has no snapshots: refused)
+      if (doc === null) throw kinded('not-loaded');
+      if (boot !== 'attached') throw kinded(readOnlyKind || 'unavailable');
+      if (activeWorkout()) throw kinded('workout-active');
+      boot = 'readonly'; // the lock: no save can start until state is replaced or this fails
+      readOnlyKind = 'importing';
+      try {
+        await settled();
+        if (activeWorkout()) throw kinded('workout-active'); // re-check after the wait
+        const cur = await engine.readDoc();
+        if (cur && cur.corrupt) throw kinded('corrupt');
+        const curDoc = cur ? cur.doc : { workouts: [], schemaVersion: current };
+        const m = io.mergeDocs(curDoc, v.doc, mode);
+        if (!m.ok) throw Object.assign(kinded('invalid'), { reason: m.reason, where: 'merge' });
+        const next = { ...m.doc, schemaVersion: current };
+        const res = await engine.writeDoc(next, {
+          seq: Math.max(seq, cur ? cur.seq : 0) + 1,
+          schema: current,
+          expectSeq: cur ? cur.seq : undefined,
+          skipOnMismatch: true, // another tab committed since we looked: refuse, preview again
+          overwriteAt: now(),
+          snapshot: {
+            reason: 'pre-import',
+            schemaVersion: curDoc.schemaVersion ?? current,
+            keep: false,
+            payload: JSON.stringify(curDoc),
+            createdAt: now(),
+          },
+        });
+        if (res.skipped) throw kinded('changed-elsewhere');
+        seq = committed = res.seq;
+        stampMirror(next, res.seq); // needs the lock kind (mirrorLive); over the ceiling -> 'stale'
+        noteCommitted(res.seq);
+        doc = next;
+        boot = 'attached';
+        readOnlyKind = null;
+        return { snapshotId: res.snapshotId ?? null, seq: res.seq, doc: next, counts: m.counts };
+      } catch (e) {
+        if (readOnlyKind === 'importing') {
+          boot = 'attached';
+          readOnlyKind = null;
+        }
+        if (e && (e.kind === 'future' || e.kind === 'corrupt')) lock(e.kind);
+        throw e;
+      }
+    }
+
+    /** Is Undo still clean? It reads meta.seq from IndexedDB now, not an in-memory value. */
+    async function checkUndo({ commitSeq }) {
+      await usable();
+      await settled();
+      const m = await engine.readMeta();
+      return { laterChanges: m.seq !== commitSeq };
+    }
+
+    /**
+     * Undo an import: restore its pre-import snapshot (restore snapshots the present state first,
+     * so even later changes are kept). If something was saved since the import (any tab) this
+     * refuses with 'changed-since' unless the caller passes acceptLater (the designer's warning
+     * said later changes will be removed). The store is read-only afterwards: the caller reloads.
+     */
+    async function undoImport({ snapshotId, commitSeq }, { acceptLater = false } = {}) {
+      if (!Number.isInteger(snapshotId)) throw kinded('not-found');
+      const { laterChanges } = await checkUndo({ commitSeq });
+      if (laterChanges && !acceptLater) throw kinded('changed-since');
+      return restore(snapshotId);
+    }
+
+    /** Build the export file text for `payload` (the six sets). Partial when the data is unreadable. */
+    async function buildExport(payload) {
+      const io = await getIo();
+      let partialReason = null;
+      if (boot === 'readonly' && !['restored', 'restoring', 'importing'].includes(readOnlyKind)) {
+        partialReason = { corrupt: 'unreadable', future: 'newer' }[readOnlyKind] || 'unavailable';
+      }
+      return io.buildExport(payload, {
+        now: now(),
+        partialReason,
+        migrate: (d) => runMigrations(migrations, d, { current }),
+      });
+    }
+
     async function loadAll() {
       const d = await load();
       if (engine || boot === 'provisional') afterLoad();
@@ -1617,6 +1889,11 @@
       snapshot,
       snapshots,
       restore,
+      previewImport,
+      importDoc,
+      checkUndo,
+      undoImport,
+      buildExport,
       saveActive,
       attach,
       ready: () => ready,
@@ -1637,6 +1914,12 @@
     createIdbEngine,
     createStore,
     classifyError,
+    MAX_SEQ,
+    SEQ_JUMP,
+    HBSEQ_CORRUPT,
+    MIRROR_CEILING,
+    IMPORT_MAX_BYTES,
+    IO_API_VERSION,
     STORAGE_KEY,
     LEGACY_KEYS,
     KEYS,
@@ -1664,6 +1947,43 @@
       current: LATEST_SCHEMA,
       now: () => Date.now(),
       nav: window.navigator,
+      // Lazy: nothing is fetched until the first Import/Export. A failure refuses ('io-unavailable');
+      // there is no fallback to any older import path. file:// is unsupported (no module loads).
+      loadIo: () =>
+        SCRIPT_SRC && /^https?:/.test(SCRIPT_SRC)
+          ? import(SCRIPT_SRC.replace(/[?#].*$/, '').replace(/[^/]*$/, 'storage/import-export.js'))
+          : Promise.reject(new Error('no module url')),
+    });
+    const ioError = (kind, extra) => Object.assign(new Error(kind), { kind }, extra);
+    const io = Object.freeze({
+      /**
+       * Read, validate and preview an import file. Nothing is written until apply().
+       * Resolves {summary, apply({mode}), checkUndo(), undo({acceptLater})}; rejects with an Error
+       * whose `kind` is a fixed code ('invalid' + reason/where, 'io-unavailable', 'io-skew', ...).
+       */
+      async importFile(file) {
+        if (!file || typeof file.size !== 'number' || typeof file.text !== 'function') {
+          throw ioError('invalid', { reason: 'not-text' });
+        }
+        if (file.size > IMPORT_MAX_BYTES) throw ioError('invalid', { reason: 'too-large' });
+        let text = await file.text();
+        const preview = await store.previewImport(text);
+        let last = null;
+        return Object.freeze({
+          summary: preview.summary,
+          async apply({ mode = 'merge' } = {}) {
+            if (text === null) throw ioError('consumed');
+            const r = await store.importDoc(text, { mode });
+            text = null;
+            last = { snapshotId: r.snapshotId, commitSeq: r.seq };
+            return r;
+          },
+          checkUndo: () => (last ? store.checkUndo(last) : Promise.reject(ioError('not-found'))),
+          undo: (o) => (last ? store.undoImport(last, o) : Promise.reject(ioError('not-found'))),
+        });
+      },
+      /** The export file for `payload` (the six sets): {ok, text, filename, partial, warnings}. */
+      exportFile: (payload) => store.buildExport(payload),
     });
     store
       .load()
@@ -1681,6 +2001,7 @@
             saveActive: store.saveActive,
             ready: store.ready,
           }),
+          io,
         });
         // Attach the save-problem bar now, so a load-time problem is on screen before hbStart removes
         // hb-booting. A fault in the bar must never stop the app from booting.

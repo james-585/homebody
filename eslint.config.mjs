@@ -48,6 +48,15 @@ export default [
     },
   },
   {
+    // Lazily loaded ES modules (T7): pure, no browser globals needed.
+    files: ['src/storage/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2024,
+      sourceType: 'module',
+      globals: { TextEncoder: 'readonly' },
+    },
+  },
+  {
     // Code passed to page.evaluate runs in the browser against the app's classic-script globals.
     files: ['tests/e2e/**/*.mjs'],
     languageOptions: {
