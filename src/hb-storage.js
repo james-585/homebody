@@ -1915,7 +1915,8 @@
       await usable();
       await settled();
       const m = await engine.readMeta();
-      return { laterChanges: m.seq !== commitSeq };
+      // `unsaved`: Undo would be refused now ('unsaved'), because an edit is only in memory and the mirror
+      return { laterChanges: m.seq !== commitSeq, unsaved: unsaved() };
     }
 
     /**

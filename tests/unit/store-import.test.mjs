@@ -118,12 +118,18 @@ test('Undo with nothing saved since the import is clean and reads meta.seq at ta
   const { store, doc } = await booted(r);
   const before = projected(doc);
   const res = await store.importDoc(REAL_TEXT, { mode: 'replace' });
-  assert.deepEqual(await store.checkUndo({ commitSeq: res.seq }), { laterChanges: false });
+  assert.deepEqual(await store.checkUndo({ commitSeq: res.seq }), {
+    laterChanges: false,
+    unsaved: false,
+  });
   // another tab saves: the check sees it in IndexedDB although this tab's memory did not change
   const other = r.make();
   const od = await other.load();
   await other.save(payload({ ...od, favourites: ['z'] }));
-  assert.deepEqual(await store.checkUndo({ commitSeq: res.seq }), { laterChanges: true });
+  assert.deepEqual(await store.checkUndo({ commitSeq: res.seq }), {
+    laterChanges: true,
+    unsaved: false,
+  });
   await assert.rejects(store.undoImport({ snapshotId: res.snapshotId, commitSeq: res.seq }), {
     kind: 'changed-since',
   });
@@ -728,6 +734,7 @@ test('M-A: with a failed save outstanding every import mode and Undo refuse "uns
   }
   await assert.rejects(store.previewImport(REAL_TEXT), { kind: 'unsaved' });
   assert.equal(await store.importBlocked(), 'unsaved');
+  assert.equal((await store.checkUndo({ commitSeq: 1 })).unsaved, true);
   const snap = (await store.snapshots())[0];
   await assert.rejects(store.restore(snap.id), { kind: 'unsaved' });
   await assert.rejects(
@@ -806,4 +813,16 @@ test('Replace on identical data still writes and snapshots (only Merge and plans
   assert.equal(again.nothing, undefined);
   assert.equal(r.fake.ctl.commits, commits + 1);
   assert.ok(again.snapshotId);
+});
+
+test('Undo with healthy saves is unaffected by the unsaved check', async () => {
+  const r = rig();
+  const { store } = await booted(r);
+  const res = await store.importDoc(REAL_TEXT, { mode: 'replace' });
+  assert.deepEqual(await store.checkUndo({ commitSeq: res.seq }), {
+    laterChanges: false,
+    unsaved: false,
+  });
+  await store.undoImport({ snapshotId: res.snapshotId, commitSeq: res.seq });
+  assert.equal(store.status().state, 'readonly', 'restored: reload next');
 });

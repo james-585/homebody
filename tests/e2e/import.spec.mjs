@@ -65,7 +65,7 @@ test.describe('import through HB.io', () => {
     expect(out.summary.current.workouts).toBe(OLD.workouts.length);
     expect(out.summary.replace.workoutsRemoved).toBe(OLD.workouts.length);
     expect(out.n).toBe(N);
-    expect(out.undo).toEqual({ laterChanges: false });
+    expect(out.undo).toEqual({ laterChanges: false, unsaved: false });
     const mid = await idbWorkouts(page);
     expect(mid.workouts).toHaveLength(N);
     expect(mid.snaps).toContain('pre-import');
