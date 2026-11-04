@@ -581,7 +581,7 @@ During an open workout layer XM1 and XM2 are toasts only: `io.x.failedWorkout`.
 | --- | --- | --- |
 | `io.c.workouts` | `1 workout` | `{n} workouts` |
 | `io.c.prs` | `1 personal record` | `{n} personal records` |
-| `io.chg.body` | `1 body measurement` | `{n} body measurements` |
+| `io.c.bodyMetrics` | `1 body measurement` | `{n} body measurements` |
 | `io.c.plans` | `1 plan` | `{n} plans` |
 | `io.c.favs` | `1 favourite exercise` | `{n} favourite exercises` |
 Row names: `Workouts`, `Personal records`, `Body measurements`, `Plans`, `Favourite exercises`, `Profile`.
