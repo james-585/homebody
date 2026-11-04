@@ -1,6 +1,7 @@
 // T7a: the import validator. Fixture facts, the malformed variants, the threat list row by row.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { performance } from 'node:perf_hooks';
 import {
   io,
   opts,
@@ -49,7 +50,6 @@ test('the importer and the app agree on the shared constants (skew guard)', () =
   assert.equal(io.LATEST_SCHEMA, LATEST_SCHEMA);
 });
 
-const wk = (i, over) => ({ ...file().workouts[0], ...over, id: 1000 + i });
 const edit = (fn) => {
   const f = file({ personalRecords: { Plank: { value: 60, unit: 'sec' } } });
   f.userPlans = [real().userPlans[0]];

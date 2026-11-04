@@ -1,7 +1,7 @@
 // T7a: merge, replace, summary and export. Pure functions over validated documents.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { io, opts, REAL_TEXT, real, file, importFixture, NOW } from './helpers/io.mjs';
+import { io, opts, REAL_TEXT, file, importFixture, NOW } from './helpers/io.mjs';
 
 const { validate, mergeDocs, summarize, buildExport } = io;
 const MAX = Number.MAX_SAFE_INTEGER;
