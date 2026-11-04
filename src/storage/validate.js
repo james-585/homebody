@@ -61,15 +61,24 @@ const STOP = Symbol('stop');
 // String rule. Controls are refused except \t and \n; U+2028/2029; bidi overrides and isolates;
 // lone surrogates. Name-like fields also refuse < and >; notes allow them (they only ever reach
 // escaped text sinks). Nothing is silently stripped.
-function hasControl(s) {
+/**
+ * Characters refused in every string: controls (except \t and \n), U+200B (zero-width space),
+ * U+2060 to U+2064 (word joiner and invisible operators), U+FEFF inside a string, U+FFFE/FFFF,
+ * U+2028/2029 and the bidi overrides and isolates. Allowed everywhere: U+200C and U+200D (the
+ * joiners emoji sequences and Persian/Indic text need). Allowed in notes only: U+200E, U+200F and
+ * U+061C (direction marks; a name could use them to disguise its text). U+00AD (soft hyphen) is
+ * allowed: it is ordinary pasted text and cannot spoof anything a reader cannot see in the app.
+ */
+function hasControl(s, note = false) {
   for (let i = 0; i < s.length; i++) {
     const x = s.charCodeAt(i);
     if (
       x <= 8 ||
       (x >= 11 && x <= 31) ||
       (x >= 127 && x <= 159) ||
-      (x >= 0x200b && x <= 0x200f) || // zero-width and direction marks
-      x === 0x061c || // Arabic letter mark
+      x === 0x200b || // zero-width space
+      (!note && (x === 0x200e || x === 0x200f || x === 0x061c)) || // direction marks: names only
+      (x >= 0x2060 && x <= 0x2064) || // word joiner, invisible operators
       x === 0xfeff || // BOM inside a string
       x === 0xfffe ||
       x === 0xffff ||
@@ -151,7 +160,8 @@ function str(c, v, where, kind, o = {}) {
   if (typeof v !== 'string') return problem(c, 'bad-type', where);
   const max = o.max ?? (kind === 'note' ? LIMITS.notesMax : LIMITS.nameMax);
   if (v.length > max) return problem(c, 'too-long', where);
-  if (hasControl(v) || LONE_SURROGATE.test(v)) return problem(c, 'bad-chars', where);
+  if (hasControl(v, kind === 'note') || LONE_SURROGATE.test(v))
+    return problem(c, 'bad-chars', where);
   if (kind === 'name' && ANGLE.test(v)) return problem(c, 'bad-chars', where);
   return v;
 }

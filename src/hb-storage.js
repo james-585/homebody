@@ -111,6 +111,31 @@
   // status().mirror says 'stale'. Never applied to the localStorage fallback engine's own writes.
   const MIRROR_CEILING = 512 * 1024; // characters of mirror text
   const IMPORT_MAX_BYTES = 20 * 1024 * 1024; // must equal LIMITS.maxBytes in src/storage/validate.js
+  // Every `kind` that importDoc, previewImport, importBlocked, undoImport and HB.io can refuse with
+  // (besides read-only kinds from the store: corrupt, future, restored, restoring, importing,
+  // stale, unavailable). T7b must map each to exactly one designer-written message; a kind with no
+  // copy is a stop condition, not a reason to write copy.
+  const IMPORT_KINDS = Object.freeze([
+    'invalid', // + reason and where (validate.js REASONS, plus 'id-space' from the merge)
+    'bad-mode',
+    'partial-replace',
+    'no-plans',
+    'unsupported',
+    'not-loaded',
+    'workout-active',
+    'unsaved', // an edit that is not saved anywhere yet (a failed save): save first
+    'changed-elsewhere',
+    'changed-since',
+    'io-unavailable',
+    'io-skew',
+    'read-failed',
+    'consumed',
+    'not-found',
+    'corrupt',
+    'future',
+    'importing',
+    'restored',
+  ]);
   const IO_API_VERSION = 1; // must equal IO_API_VERSION in src/storage/validate.js (skew guard)
 
   /** Every key the app keeps on the device: the one list "delete all my data" must use. */
@@ -1680,6 +1705,7 @@
       }
       if (active) throw kinded('workout-active');
       await settled(); // let queued saves finish first, then refuse new ones while this runs
+      if (unsaved()) throw kinded('unsaved'); // same synchronous block as the lock
       boot = 'readonly';
       readOnlyKind = 'restoring';
       try {
@@ -1732,6 +1758,13 @@
       }
     };
 
+    /**
+     * An edit that is only in memory and in the mirror (a failed or retrying save, or a mirror
+     * counter ahead of what IndexedDB committed). Replacing the stores now would wipe it from every
+     * copy, so import and restore refuse ('unsaved') until a save commits. Call only when idle.
+     */
+    const unsaved = () => !!error || phase === 'failed' || phase === 'retrying' || seq > committed;
+
     /** The lazy module, or a refusal. Never falls back to any older import path. */
     async function getIo() {
       if (!loadIo) throw kinded('io-unavailable');
@@ -1769,7 +1802,8 @@
       const v = validateText(io, text);
       await usable();
       if (doc === null) throw kinded('not-loaded');
-      await settled();
+      await settled(); // (waits for a save in retry back-off; restore does the same)
+      if (unsaved()) throw kinded('unsaved');
       const cur = await engine.readDoc();
       if (cur && cur.corrupt) throw kinded('corrupt');
       const curDoc = cur ? cur.doc : { workouts: [] };
@@ -1803,6 +1837,7 @@
         if (!inflight && !queued) break;
       }
       if (boot !== 'attached') throw kinded(boot === 'readonly' ? readOnlyKind : 'not-loaded');
+      if (unsaved()) throw kinded('unsaved'); // an edit not committed anywhere: nothing is locked
       if (activeWorkout()) throw kinded('workout-active');
       boot = 'readonly'; // the lock: no save can start until state is replaced or this fails
       readOnlyKind = 'importing';
@@ -1852,6 +1887,27 @@
         if (e && (e.kind === 'future' || e.kind === 'corrupt')) lock(e.kind);
         throw e;
       }
+    }
+
+    /**
+     * Would an import be refused right now? Resolves a kind ('unsupported', 'corrupt', 'future',
+     * 'unsaved', 'workout-active', ...) or null. Writes nothing; the UI asks before the file picker.
+     */
+    async function importBlocked() {
+      try {
+        await usable();
+      } catch (e) {
+        return (e && e.kind) || 'unavailable';
+      }
+      for (;;) {
+        await settled();
+        if (!inflight && !queued) break;
+      }
+      if (doc === null || boot !== 'attached')
+        return boot === 'readonly' ? readOnlyKind : 'not-loaded';
+      if (unsaved()) return 'unsaved';
+      if (activeWorkout()) return 'workout-active';
+      return null;
     }
 
     /** Is Undo still clean? It reads meta.seq from IndexedDB now, not an in-memory value. */
@@ -1907,6 +1963,7 @@
       snapshots,
       restore,
       previewImport,
+      importBlocked,
       importDoc,
       checkUndo,
       undoImport,
@@ -1937,6 +1994,7 @@
     MIRROR_CEILING,
     IMPORT_MAX_BYTES,
     IO_API_VERSION,
+    IMPORT_KINDS,
     STORAGE_KEY,
     LEGACY_KEYS,
     KEYS,
@@ -2014,6 +2072,8 @@
           undo: (o) => (last ? store.undoImport(last, o) : Promise.reject(ioError('not-found'))),
         });
       },
+      /** Would an import be refused now (a kind) or not (null)? Ask before opening the file picker. */
+      canImport: () => store.importBlocked(),
       /** The export file for `payload` (the six sets): {ok, text, filename, partial, warnings}. */
       exportFile: (payload) => store.buildExport(payload),
     });

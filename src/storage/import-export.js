@@ -319,7 +319,8 @@ const PLAN_LIST_MAX = 20;
  *   file / current   counts, date range, profile name (clipped), partial flag, `_exported`
  *   cats             per category (workouts, prs, body, plans, favourites): inFile, mine, new,
  *                    present, removed (mode independent)
- *   merge / replace  per mode: the counts of mergeDocs, mirrorStale, and for replace `allowed`
+ *   merge / replace / onlyPlans  per mode: the counts of mergeDocs, `nothing` (the UI must not
+ *                    recompute it), mirrorStale, and for replace `allowed`
  *   plans            first 20 plans in file order {name (40 chars), days, present} and the total
  *   warnings         dropped, futureDates, duplicateIds (inside the file), unrecognised (count) and
  *                    unrecognisedWhere (record paths, never values)
@@ -330,7 +331,13 @@ export function summarize(current, validated, { mirrorCeiling = Infinity } = {})
   const side = (mode) => {
     const m = mergeDocs(current, d, mode);
     if (!m.ok) return { error: m.reason };
-    return { ...m.counts, mirrorStale: JSON.stringify(m.doc).length + 24 > mirrorCeiling };
+    return {
+      ...m.counts,
+      // true when applying would change nothing (spec 4.3.5, 4.10): the UI shows Done, not Import.
+      // Replace is never 'nothing': it rewrites the stores and takes a snapshot even on identical data.
+      nothing: mode !== 'replace' && addsNothing(m.counts),
+      mirrorStale: JSON.stringify(m.doc).length + 24 > mirrorCeiling,
+    };
   };
   const replace = side('replace');
   if (!replace.error) replace.allowed = !validated.partial.partial;
