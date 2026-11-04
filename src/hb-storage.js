@@ -554,10 +554,12 @@
             if (v !== undefined) result.skipped = true;
             else go(null);
           } else if (
-            o.expectSeq === undefined ||
-            sq.result === undefined ||
-            sq.result === o.expectSeq ||
-            ownRetry()
+            o.expectEmpty
+              ? v === undefined // we read an empty database: any commit since is a mismatch
+              : o.expectSeq === undefined ||
+                sq.result === undefined ||
+                sq.result === o.expectSeq ||
+                ownRetry()
           ) {
             go(null);
           } else {
@@ -1786,29 +1788,44 @@
      * when this resolves or fails; on any failure it is released (unless the data is corrupt/newer).
      */
     async function importDoc(text, { mode = 'merge' } = {}) {
-      if (mode !== 'merge' && mode !== 'replace') throw kinded('bad-mode');
+      if (mode !== 'merge' && mode !== 'replace' && mode !== 'plans') throw kinded('bad-mode');
       const io = await getIo();
       const v = validateText(io, text);
       if (mode === 'replace' && v.partial.partial) throw kinded('partial-replace');
+      if (mode === 'plans' && v.doc.userPlans.length === 0) throw kinded('no-plans');
       await usable(); // IndexedDB engine only (the fallback engine has no snapshots: refused)
       if (doc === null) throw kinded('not-loaded');
-      if (boot !== 'attached') throw kinded(readOnlyKind || 'unavailable');
+      // Drain FIRST: a save accepted before this call (its mirror is already written, its commit
+      // queued) must commit before we read, or the lock would refuse it and the edit would be in
+      // no copy. Then check and take the lock in the same synchronous block (no await between).
+      for (;;) {
+        await settled();
+        if (!inflight && !queued) break;
+      }
+      if (boot !== 'attached') throw kinded(boot === 'readonly' ? readOnlyKind : 'not-loaded');
       if (activeWorkout()) throw kinded('workout-active');
       boot = 'readonly'; // the lock: no save can start until state is replaced or this fails
       readOnlyKind = 'importing';
       try {
-        await settled();
+        await settled(); // nothing can be queued now (save() refuses); a settled retry timer is done
         if (activeWorkout()) throw kinded('workout-active'); // re-check after the wait
         const cur = await engine.readDoc();
         if (cur && cur.corrupt) throw kinded('corrupt');
         const curDoc = cur ? cur.doc : { workouts: [], schemaVersion: current };
         const m = io.mergeDocs(curDoc, v.doc, mode);
         if (!m.ok) throw Object.assign(kinded('invalid'), { reason: m.reason, where: 'merge' });
+        if (mode !== 'replace' && io.addsNothing(m.counts)) {
+          // Nothing to add: no write, no snapshot, nothing to undo.
+          boot = 'attached';
+          readOnlyKind = null;
+          return { nothing: true, snapshotId: null, seq: committed, doc: curDoc, counts: m.counts };
+        }
         const next = { ...m.doc, schemaVersion: current };
         const res = await engine.writeDoc(next, {
           seq: Math.max(seq, cur ? cur.seq : 0) + 1,
           schema: current,
           expectSeq: cur ? cur.seq : undefined,
+          expectEmpty: !cur, // read an empty database: another tab's first commit is a mismatch
           skipOnMismatch: true, // another tab committed since we looked: refuse, preview again
           overwriteAt: now(),
           snapshot: {
@@ -1966,16 +1983,31 @@
           throw ioError('invalid', { reason: 'not-text' });
         }
         if (file.size > IMPORT_MAX_BYTES) throw ioError('invalid', { reason: 'too-large' });
-        let text = await file.text();
+        let text;
+        try {
+          text = await file.text();
+        } catch {
+          throw ioError('read-failed'); // the file could not be read (moved, permission)
+        }
         const preview = await store.previewImport(text);
         let last = null;
+        const held = () => {
+          if (text === null) throw ioError('consumed'); // disposed or already applied
+          return text;
+        };
         return Object.freeze({
           summary: preview.summary,
-          async apply({ mode = 'merge' } = {}) {
-            if (text === null) throw ioError('consumed');
-            const r = await store.importDoc(text, { mode });
+          /** "Check again": the same file against what is stored now. Resolves the new summary. */
+          recheck: async () => (await store.previewImport(held())).summary,
+          /** Drop the held file text (the sheet closed). Nothing else is affected. */
+          dispose() {
             text = null;
-            last = { snapshotId: r.snapshotId, commitSeq: r.seq };
+          },
+          /** mode: 'merge' (default), 'replace' or 'plans' (plans only). */
+          async apply({ mode = 'merge' } = {}) {
+            const r = await store.importDoc(held(), { mode });
+            text = null;
+            if (!r.nothing) last = { snapshotId: r.snapshotId, commitSeq: r.seq };
             return r;
           },
           checkUndo: () => (last ? store.checkUndo(last) : Promise.reject(ioError('not-found'))),

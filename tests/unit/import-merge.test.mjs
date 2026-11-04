@@ -112,13 +112,15 @@ test('duplicates are decided against current data by content, not by id', () => 
   assert.equal(m.doc.workouts.length, 2);
 });
 
-test('merged workouts stay newest first; replace keeps the file order', () => {
+test('merged and replaced workouts are newest first; an unreadable date sorts last', () => {
   const cur = docOf([wk(3), wk(1)]);
   const inc = incoming([wk(2)]);
   const dates = mergeDocs(cur, inc, 'merge').doc.workouts.map((w) => w.date);
   assert.deepEqual(dates, [...dates].sort().reverse());
   const r = mergeDocs(cur, incoming([wk(1), wk(3)]), 'replace');
-  assert.deepEqual(ids(r.doc.workouts), [1, 3]);
+  assert.deepEqual(ids(r.doc.workouts), [3, 1], 'replace sorts the file newest first');
+  const same = mergeDocs(cur, incoming([wk(3), wk(1)]), 'replace');
+  assert.deepEqual(same.doc.workouts, cur.workouts, 'an already sorted file is unchanged');
 });
 
 test('PRs, body metrics, plans, favourites: yours win, new ones are added', () => {
@@ -189,7 +191,7 @@ test('profile: merge takes the file profile only when you have none; replace sho
 test('replace: takes the file whole and counts what you would lose', () => {
   const cur = docOf([wk(1), wk(2), wk(3)], { favourites: ['x'] });
   const r = mergeDocs(cur, incoming([wk(2), wk(9)]), 'replace');
-  assert.deepEqual(ids(r.doc.workouts), [2, 9]);
+  assert.deepEqual(ids(r.doc.workouts), [9, 2]);
   assert.equal(r.counts.workoutsRemoved, 2);
   assert.deepEqual(r.doc.favourites, []);
 });
@@ -291,4 +293,126 @@ test('export: too large to restore is refused, never produced; records the impor
     buildExport({ workouts: [], profile: circ }, { now: NOW }).reason,
     'not-serialisable',
   );
+});
+
+test('profile in use: any detail or equipment counts, not only a name (Merge keeps it, Replace says so)', () => {
+  const inc = incoming([wk(1)], { profile: { name: 'Them' } });
+  for (const p of [
+    { equipment: { dumbbells: [5, 10] } },
+    { equipment: { barbell_bars: { standard_bar: true } } },
+    { age: 30 },
+    { weight: 80 },
+    { goal: 'lose_fat' },
+    { sex: 'male' },
+    { activity: 'active' },
+  ]) {
+    const m = mergeDocs(docOf([], { profile: p }), inc, 'merge');
+    assert.equal(m.counts.profile, 'kept', JSON.stringify(p));
+    assert.deepEqual(m.doc.profile, p);
+    assert.equal(mergeDocs(docOf([], { profile: p }), inc, 'replace').counts.profile, 'replaced');
+  }
+  for (const p of [
+    null,
+    {},
+    { equipment: {} },
+    { equipment: { dumbbells: [], rig: [] } },
+    { name: '' },
+  ]) {
+    assert.equal(mergeDocs(docOf([], { profile: p }), inc, 'merge').counts.profile, 'taken');
+  }
+});
+
+test('plans only: everything but userPlans is yours, untouched; same id keeps yours; nothing to add is detected', () => {
+  const cur = docOf([wk(1)], {
+    personalRecords: { Plank: { value: 1, unit: 'sec' } },
+    favourites: ['a'],
+    profile: { name: 'Me' },
+    userPlans: [{ id: 7, name: 'Mine', planDays: [] }],
+  });
+  const inc = incoming([wk(50)], {
+    userPlans: [
+      { id: 7, name: 'Theirs', planDays: [] },
+      { id: 8, name: 'New', planDays: [{ name: 'D', exercises: [] }] },
+    ],
+    favourites: ['b'],
+    personalRecords: { Curl: { value: 5, unit: 'kg' } },
+  });
+  const m = mergeDocs(cur, inc, 'plans');
+  assert.deepEqual(m.doc.workouts, cur.workouts);
+  assert.deepEqual(m.doc.personalRecords, cur.personalRecords);
+  assert.deepEqual(m.doc.favourites, ['a']);
+  assert.deepEqual(m.doc.profile, { name: 'Me' });
+  assert.deepEqual(
+    m.doc.userPlans.map((p) => p.name),
+    ['Mine', 'New'],
+  );
+  assert.equal(m.counts.plansPresent, 1);
+  assert.equal(io.addsNothing(m.counts), false);
+  const again = mergeDocs(m.doc, inc, 'plans');
+  assert.equal(io.addsNothing(again.counts), true, 're-importing the same plans is a no-op');
+  assert.deepEqual(again.doc.userPlans, m.doc.userPlans);
+  assert.equal(io.addsNothing(mergeDocs(cur, incoming([wk(1)]), 'merge').counts), true);
+});
+
+test('summary carries every number the preview needs (the UI computes nothing)', () => {
+  const cur = docOf([wk(1), wk(2)], {
+    personalRecords: { Plank: { value: 1, unit: 'sec' }, Mine: { value: 2, unit: 'kg' } },
+    bodyMetrics: [{ date: '2026-10-01T00:00:00.000Z', weight: 80 }],
+    favourites: ['a', 'z'],
+    userPlans: [{ id: 7, name: 'Mine', planDays: [] }],
+  });
+  const plans = Array.from({ length: 25 }, (_, i) => ({
+    id: i + 7,
+    name: `Plan ${i} ${'x'.repeat(60)}`,
+    planDays: [{ name: 'D', exercises: [] }],
+  }));
+  const v = valid(
+    file({
+      workouts: [wk(1), wk(3)],
+      personalRecords: { Plank: { value: 9, unit: 'sec' }, Curl: { value: 5, unit: 'kg' } },
+      bodyMetrics: [
+        { date: '2026-10-01T00:00:00.000Z', weight: 79 },
+        { date: '2026-10-05T00:00:00.000Z', weight: 78 },
+      ],
+      favourites: ['a', 'b'],
+      userPlans: plans,
+      profile: { name: 'Emoji \u{1F4AA}'.repeat(30) },
+    }),
+  );
+  const s = summarize(cur, v, { mirrorCeiling: 512 * 1024 });
+  assert.deepEqual(s.cats.workouts, { inFile: 2, mine: 2, new: 1, present: 1, removed: 1 });
+  assert.deepEqual(s.cats.prs, { inFile: 2, mine: 2, new: 1, present: 1, removed: 1 });
+  assert.deepEqual(s.cats.body, { inFile: 2, mine: 1, new: 1, present: 1, removed: 0 });
+  assert.deepEqual(s.cats.favourites, { inFile: 2, mine: 2, new: 1, present: 1, removed: 1 });
+  assert.deepEqual(s.cats.plans, { inFile: 25, mine: 1, new: 24, present: 1, removed: 0 });
+  assert.equal(s.plans.total, 25);
+  assert.equal(s.plans.items.length, 20, 'listed up to 20, in file order');
+  assert.deepEqual([s.plans.items[0].present, s.plans.items[1].present], [true, false]);
+  assert.equal([...s.plans.items[0].name].length, 40);
+  assert.equal(s.plans.items[0].days, 1);
+  assert.equal(s.onlyPlans.plansAdded, 24);
+  assert.ok(s.file.exported === null && s.file.dateRange.from && s.file.profileName);
+  assert.ok([...s.file.profileName].length <= 100);
+  assert.ok(
+    !/[\uD800-\uDFFF](?![\uDC00-\uDFFF])/.test(s.file.profileName.slice(-1)),
+    'cut by code points, never mid-pair',
+  );
+  assert.deepEqual(Object.keys(s.warnings).sort(), [
+    'dropped',
+    'duplicateIds',
+    'futureDates',
+    'unrecognised',
+    'unrecognisedWhere',
+  ]);
+  for (const k of ['workoutsReid', 'mirrorStale', 'profile'])
+    assert.ok(k in s.merge && k in s.replace, k);
+});
+
+test('replace and merge into an empty store agree on order and ids after the newest-first sort', () => {
+  const a = wk(5);
+  const inc = incoming([wk(1), a, { ...a }]);
+  const m = mergeDocs(docOf([]), inc, 'merge');
+  const r = mergeDocs(docOf([]), inc, 'replace');
+  assert.ok(unique(ids(r.doc.workouts)));
+  assert.deepEqual(ids(m.doc.workouts).sort(), ids(r.doc.workouts).sort());
 });

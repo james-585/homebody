@@ -2,6 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   io,
   opts,
@@ -13,6 +15,7 @@ import {
   IO_API_VERSION,
 } from './helpers/io.mjs';
 import { LATEST_SCHEMA } from './helpers/hb-storage.mjs';
+import { SYNTHETIC_DIR } from './helpers/load-fixtures.mjs';
 
 const { validate, LIMITS } = io;
 const V = (x, o) => validate(typeof x === 'string' ? x : JSON.stringify(x), opts(o));
@@ -27,7 +30,13 @@ const refuses = (x, reason, o) => {
 test('the real fixture validates with zero dropped fields and an identical document', () => {
   const r = V(REAL_TEXT);
   assert.equal(r.ok, true);
-  assert.deepEqual(r.warnings, { dropped: 0, futureDates: 0, duplicateIds: 0 });
+  assert.deepEqual(r.warnings, {
+    dropped: 0,
+    futureDates: 0,
+    duplicateIds: 0,
+    unrecognised: 0,
+    unrecognisedWhere: [],
+  });
   const o = real();
   for (const k of [
     'workouts',
@@ -81,7 +90,8 @@ const VARIANTS = [
     'bad-chars',
   ],
   ['markup in a favourite', file({ favourites: ['<i>'] }), 'bad-chars'],
-  ['unknown goal', edit((f) => (f.profile.goal = 'bulk')), 'bad-enum'],
+  ['goal that is not a token', edit((f) => (f.profile.goal = 'Bulk <b>')), 'bad-enum'],
+  ['goal that is a number', edit((f) => (f.profile.goal = 5)), 'bad-enum'],
   ['PR unit is not kg or sec', edit((f) => (f.personalRecords.Plank.unit = 'lb')), 'bad-enum'],
   ['workout id is a string', edit((f) => (f.workouts[0].id = '7')), 'bad-type'],
   ['workout id is fractional', edit((f) => (f.workouts[0].id = 1.5)), 'bad-type'],
@@ -152,7 +162,7 @@ test('size: over the limit is refused before parsing; whitespace and empty are r
 });
 
 test('a single leading BOM is stripped, not rejected', () => {
-  assert.equal(V('﻿' + JSON.stringify(file())).ok, true);
+  assert.equal(V('\uFEFF' + JSON.stringify(file())).ok, true);
 });
 
 test('array and record caps', () => {
@@ -190,10 +200,10 @@ test('names: refuse < > and controls, bidi, line separators, lone surrogates; al
     'a\u0007b',
     'a\u0000b',
     'a\rb',
-    'a‮b',
-    'a⁦b',
-    'a b',
-    'a b',
+    'a\u202Eb',
+    'a\u2066b',
+    'a\u2028b',
+    'a\u2029b',
     'a\uD800b',
     'a\uDC00b',
     'a\u0085b',
@@ -229,7 +239,7 @@ test('notes may contain < and > (escaped text only) but not controls; 20,000 cap
     'bad-chars',
   );
   refuses(
-    edit((f) => (f.workouts[0].notes = 'a‮b')),
+    edit((f) => (f.workouts[0].notes = 'a\u202Eb')),
     'bad-chars',
   );
   assert.equal(V(edit((f) => (f.workouts[0].notes = 'x'.repeat(LIMITS.notesMax)))).ok, true);
@@ -418,4 +428,120 @@ test('validator speed on the fixture (reported; loose bound here, strict in the 
   const per = (performance.now() - t0) / 5;
   console.log(`# validate(real fixture, 169 KB): ${per.toFixed(1)} ms`);
   assert.ok(per < 100, `fixture validation took ${per} ms`);
+});
+
+test('display-only enums: an unknown lowercase token is kept and reported by path, never value', () => {
+  const r = V(
+    edit((f) => {
+      f.profile.goal = 'general';
+      f.profile.sex = 'x';
+      f.profile.activity = 'very_active';
+      f.userPlans[0].level = 'expert';
+      f.userPlans[0].goal = 'tone';
+    }),
+  );
+  assert.equal(r.ok, true);
+  assert.equal(r.warnings.unrecognised, 5);
+  assert.deepEqual(r.warnings.unrecognisedWhere.sort(), [
+    'profile.activity',
+    'profile.goal',
+    'profile.sex',
+    'userPlans[0].goal',
+    'userPlans[0].level',
+  ]);
+  assert.ok(!JSON.stringify(r.warnings).includes('general'));
+  assert.equal(r.doc.profile.goal, 'general', 'kept as found');
+  // the known values are not reported, and the strict ones stay strict
+  assert.equal(V(edit((f) => (f.profile.goal = 'lose_fat'))).warnings.unrecognised, 0);
+  refuses(
+    edit((f) => (f.workouts[0].exercises[0].trackType = 'distance')),
+    'bad-enum',
+  );
+  refuses(
+    edit((f) => (f.personalRecords.Plank.unit = 'lb')),
+    'bad-enum',
+  );
+  refuses(
+    edit((f) => (f.workouts[0].exercises[0].side = 'middle')),
+    'bad-enum',
+  );
+  // the synthetic fixtures use goal "general": they now import
+  assert.equal(
+    V(readFileSync(join(SYNTHETIC_DIR, 'homebody_v1.json'), 'utf8')).ok,
+    false,
+    'not a file: no _vaultfit',
+  );
+});
+
+test('dates: date-only, HH:MM, seconds and offset forms are accepted; impossible ones are not', () => {
+  for (const d of [
+    '2026-10-01',
+    '2026-10-01T08:00',
+    '2026-10-01T08:00:30',
+    '2026-10-01T08:00:30.5',
+    '2026-10-01T08:00:30.123Z',
+    '2026-10-01T08:00:30+02:00',
+    '2026-10-01T08:00-05:30',
+  ]) {
+    assert.equal(V(edit((f) => (f.workouts[0].date = d))).ok, true, d);
+  }
+  for (const d of [
+    '2026-10-01T24:00',
+    '2026-10-01T08:60',
+    '2026-13-01',
+    '2026-10-01T08:00+25:00',
+    '2026-10-01T',
+    '',
+  ]) {
+    refuses(
+      edit((f) => (f.workouts[0].date = d)),
+      'bad-date',
+    );
+  }
+});
+
+test('invisible and direction characters are refused: zero-width, marks, BOM inside, noncharacters', () => {
+  for (const c of ['\u200B', '\u200C', '\u200D', '\u200E', '\u200F', '\u061C', '\uFEFF', '\uFFFE', '\uFFFF']) {
+    refuses(
+      edit((f) => (f.workouts[0].name = `a${c}b`)),
+      'bad-chars',
+    );
+    refuses(
+      edit((f) => (f.workouts[0].notes = `a${c}b`)),
+      'bad-chars',
+    );
+  }
+});
+
+test('now must be a finite number (a clear error, not a silent window)', () => {
+  assert.throws(() => validate('{}', {}), TypeError);
+  assert.throws(() => validate('{}', { now: NaN }), TypeError);
+  assert.throws(() => io.buildExport({}, { now: undefined }), TypeError);
+});
+
+test('every reason the validator or the merge can give is a listed code', () => {
+  for (const r of [
+    'too-large',
+    'not-text',
+    'empty',
+    'not-json',
+    'not-homebody',
+    'bad-version',
+    'newer-version',
+    'missing-workouts',
+    'missing-field',
+    'bad-type',
+    'out-of-range',
+    'too-long',
+    'too-many',
+    'bad-chars',
+    'bad-key',
+    'bad-enum',
+    'bad-date',
+    'migration-failed',
+    'id-space',
+  ]) {
+    assert.ok(io.REASONS.includes(r), r);
+  }
+  for (const [name, x] of VARIANTS) assert.ok(io.REASONS.includes(V(x).reason), name);
 });

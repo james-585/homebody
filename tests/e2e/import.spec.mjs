@@ -206,6 +206,45 @@ test.describe('import through HB.io', () => {
     expect((await idbWorkouts(page)).workouts).toHaveLength(OLD.workouts.length);
   });
 
+  test('the handle: recheck, dispose, plans-only, read failure', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await open(page, siteURL);
+    const r = await page.evaluate(async (text) => {
+      const out = {};
+      const imp = await globalThis.HB.io.importFile(new globalThis.File([text], 'x.vaultfit'));
+      out.again = (await imp.recheck()).file.workouts; // "Check again": same file, fresh numbers
+      out.plansListed = imp.summary.plans.total;
+      const res = await imp.apply({ mode: 'plans' });
+      out.plansOnly = { workouts: res.doc.workouts.length, plans: res.doc.userPlans.length };
+      const again = await imp.recheck().then(
+        (s) => s.onlyPlans.plansAdded,
+        (e) => e.kind,
+      );
+      out.afterApply = again; // the text is dropped once applied
+      const h2 = await globalThis.HB.io.importFile(new globalThis.File([text], 'x.vaultfit'));
+      h2.dispose();
+      out.disposed = await h2.apply({ mode: 'merge' }).then(
+        () => 'applied',
+        (e) => e.kind,
+      );
+      out.readFailed = await globalThis.HB.io
+        .importFile({ size: 10, text: () => Promise.reject(new Error('gone')) })
+        .then(
+          () => 'ok',
+          (e) => e.kind,
+        );
+      return out;
+    }, REAL_TEXT);
+    expect(r.again).toBe(N);
+    expect(r.plansListed).toBe(1);
+    expect(r.plansOnly).toEqual({ workouts: OLD.workouts.length, plans: 1 });
+    expect(r.afterApply).toBe('consumed');
+    expect(r.disposed).toBe('consumed');
+    expect(r.readFailed).toBe('read-failed');
+  });
+
   test('a plain export in an unreadable state is marked partial', async ({
     appPage: page,
     siteURL,

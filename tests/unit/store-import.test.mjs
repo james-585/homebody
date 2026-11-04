@@ -178,17 +178,126 @@ test('interrupted write: nothing changes, no pre-import snapshot, the store stay
   assert.notEqual(store.status().state, 'readonly');
 });
 
-test('the lock: a save during the import is refused, and released on every failure path', async () => {
-  const r = rig();
+test('H1: a save accepted just before importDoc commits first; it is in the Merge result and in the Replace snapshot', async () => {
+  for (const mode of ['merge', 'replace']) {
+    const r = rig();
+    const { store, doc } = await booted(r);
+    const saved = store.save({ ...payload(doc), favourites: ['saved just before'] }); // accepted: mirror written, commit queued
+    const imp = store.importDoc(REAL_TEXT, { mode });
+    await saved; // it was committed, not refused by the lock
+    const res = await imp;
+    if (mode === 'merge') {
+      assert.deepEqual(res.doc.favourites, ['saved just before']);
+      assert.ok(mirror(r.fs).includes('saved just before'), 'and in the mirror');
+      assert.ok(
+        idbSnaps(r.fake).some(
+          (s) => s.reason === 'pre-import' && s.payload.includes('saved just before'),
+        ),
+      );
+    } else {
+      const snap = idbSnaps(r.fake).find((s) => s.reason === 'pre-import');
+      assert.ok(snap.payload.includes('saved just before'), 'recoverable through Undo');
+      await store.undoImport({ snapshotId: res.snapshotId, commitSeq: res.seq });
+      const back = await r.make().load();
+      assert.deepEqual(back.favourites, ['saved just before']);
+    }
+  }
+});
+
+test('the lock: a save while the import holds it is refused; it is released on a real throw after the lock', async () => {
+  let ref = null;
+  let attempt = null;
+  let boom = false;
+  const r = rig({
+    wrapEngine(e) {
+      const read = e.readDoc;
+      e.readDoc = (...a) => {
+        if (attempt) {
+          attempt = ref.save({ workouts: [] }).then(
+            () => 'accepted',
+            (x) => x.kind,
+          );
+        }
+        if (boom) return Promise.reject(new Error('disk on fire'));
+        return read(...a);
+      };
+    },
+  });
   const { store, doc } = await booted(r);
-  const p = store.importDoc(REAL_TEXT, { mode: 'replace' });
-  await Promise.resolve();
-  await assert.rejects(store.save(payload(doc)), { kind: 'importing' });
-  await p;
-  await store.save(payload(store.loaded()));
-  // a failed import (invalid file) never took the lock; a failed write releases it
-  await assert.rejects(store.importDoc('not json'), { kind: 'invalid' });
-  await store.save(payload(store.loaded()));
+  ref = store;
+  attempt = true; // the import's own read happens under the lock: a save now must be refused
+  const res = await store.importDoc(REAL_TEXT, { mode: 'replace' });
+  assert.equal(await attempt, 'importing');
+  assert.equal(res.doc.workouts.length, N);
+  attempt = null;
+  await store.save(payload(store.loaded())); // released
+  boom = true; // a throw after the lock was taken
+  await assert.rejects(store.importDoc(REAL_TEXT, { mode: 'replace' }), /disk on fire/);
+  boom = false;
+  await store.save(payload(doc)); // not left locked
+  assert.notEqual(store.status().state, 'readonly');
+});
+
+test('plans only: adds plans, keeps all else, snapshots; re-import is a no-op without a commit; no plans refuses', async () => {
+  const r = rig();
+  const { store } = await booted(r);
+  const res = await store.importDoc(REAL_TEXT, { mode: 'plans' });
+  assert.equal(res.doc.userPlans.length, 1);
+  assert.equal(res.doc.workouts.length, OLD.workouts.length, 'workouts are yours, untouched');
+  assert.ok(idbSnaps(r.fake).some((s) => s.reason === 'pre-import'));
+  assert.equal(idbWorkouts(r.fake).length, OLD.workouts.length);
+  const commits = r.fake.ctl.commits;
+  const again = await store.importDoc(REAL_TEXT, { mode: 'plans' });
+  assert.equal(again.nothing, true);
+  assert.equal(r.fake.ctl.commits, commits, 'already present: nothing written');
+  await assert.rejects(store.importDoc(JSON.stringify(file()), { mode: 'plans' }), {
+    kind: 'no-plans',
+  });
+  await store.save(payload(store.loaded())); // lock released on the no-op and the refusal
+  await store.undoImport({ snapshotId: res.snapshotId, commitSeq: res.seq }, { acceptLater: true });
+  assert.equal((await r.make().load()).userPlans.length, OLD.userPlans.length);
+});
+
+test('merge that adds nothing writes nothing', async () => {
+  const r = rig();
+  const { store } = await booted(r);
+  await store.importDoc(REAL_TEXT, { mode: 'merge' });
+  const commits = r.fake.ctl.commits;
+  const again = await store.importDoc(REAL_TEXT, { mode: 'merge' });
+  assert.equal(again.nothing, true);
+  assert.equal(r.fake.ctl.commits, commits);
+});
+
+test("an empty database read by the import: another tab's first commit is a mismatch, not overwritten", async () => {
+  const fake = createFakeIDB();
+  const other = createIdbEngine({ factory: fake.factory });
+  await other.open();
+  let tripped = false;
+  const r = rig({
+    fs: new FakeStorage(),
+    fake,
+    wrapEngine(e) {
+      const read = e.readDoc;
+      e.readDoc = (...a) => {
+        const p = read(...a);
+        if (tripped) {
+          tripped = false;
+          void other.writeDoc(
+            { workouts: [{ id: 1, name: 'theirs' }], schemaVersion: 2 },
+            { seq: 1, schema: 2 },
+          );
+        }
+        return p;
+      };
+    },
+  });
+  const { store } = await booted(r);
+  tripped = true;
+  await assert.rejects(store.importDoc(REAL_TEXT, { mode: 'replace' }), {
+    kind: 'changed-elsewhere',
+  });
+  assert.equal(idbWorkouts(r.fake).length, 1);
+  assert.equal(idbWorkouts(r.fake)[0].name, 'theirs');
 });
 
 test('skipOnMismatch: another tab committed between our read and our write -> refuse, preview again', async () => {
@@ -388,22 +497,33 @@ test('ceiling, fast boot: provisional save writes no plain text; restamp is gate
   assert.equal(idbSnaps(r.fake).filter((s) => s.reason === 'pre-reconcile').length, 0);
 });
 
-test("ceiling, renumber: a commit numbered past another tab's is gated; reboot: IndexedDB wins", async () => {
+test("ceiling, renumber: a commit numbered past another tab's is refused by the gate; the marked text stays", async () => {
+  // sized so that hbSeq 2 (one digit) just fits and the renumbered hbSeq 11 (two digits) does not
+  const sized = (d) => {
+    const w = { id: 1, name: 'p', date: '2026-10-01T00:00:00.000Z', exercises: [], notes: '' };
+    const base = JSON.stringify({ ...payload(d), workouts: [w] }).length;
+    return { ...payload(d), workouts: [{ ...w, notes: 'x'.repeat(MIRROR_CEILING - 10 - base) }] };
+  };
   const r = rig();
   const a = r.make();
   const da = await a.load();
   const b = r.make();
   const db = await b.load();
-  await b.save(payload({ ...db, favourites: ['b'] })); // seq 2
-  await a.save(bigDoc(da)); // a missed it: committed past (seq 3), renumber wanted
-  await a.ready();
-  const m = mirror(r.fs);
-  assert.ok(
-    hbSeqOf(m) !== null && JSON.parse(m).workouts.length !== 30,
-    'the over-ceiling mirror was refused',
+  for (let i = 0; i < 9; i++) await b.save(payload({ ...db, favourites: [`b${i}`] })); // seq 10
+  assert.equal(hbSeqOf(mirror(r.fs)), 10);
+  assert.equal(
+    JSON.stringify(sized(da)).length + 10,
+    MIRROR_CEILING,
+    'a one-digit counter fits exactly',
   );
+  await a.save(sized(da)); // a numbers it 2 (fits); the commit is numbered past b's: 11 (does not fit)
+  await a.ready();
+  assert.equal(idbWorkouts(r.fake).length, 1, 'the commit went through');
+  assert.equal(idbMeta(r.fake).seq, 11);
+  assert.equal(a.status().mirror, 'stale');
+  assert.notEqual(hbSeqOf(mirror(r.fs)), 11, 'the renumbered text was refused by the gate');
   const back = await r.make().load();
-  assert.equal(back.workouts.length, 30);
+  assert.equal(back.workouts.length, 1, 'IndexedDB wins at the next boot');
   assert.equal(idbSnaps(r.fake).filter((s) => s.reason === 'pre-reconcile').length, 0);
 });
 

@@ -49,6 +49,7 @@ export const REASONS = Object.freeze([
   'bad-enum',
   'bad-date',
   'migration-failed',
+  'id-space', // merge only: no free workout or plan id (see mergeDocs)
 ]);
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -67,6 +68,11 @@ function hasControl(s) {
       x <= 8 ||
       (x >= 11 && x <= 31) ||
       (x >= 127 && x <= 159) ||
+      (x >= 0x200b && x <= 0x200f) || // zero-width and direction marks
+      x === 0x061c || // Arabic letter mark
+      x === 0xfeff || // BOM inside a string
+      x === 0xfffe ||
+      x === 0xffff ||
       x === 0x2028 ||
       x === 0x2029 ||
       (x >= 0x202a && x <= 0x202e) ||
@@ -79,6 +85,7 @@ function hasControl(s) {
 }
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 const ANGLE = /[<>]/;
+const TOKEN = /^[a-z][a-z0-9_]{0,39}$/;
 const ID_TOKEN = /^[a-z0-9_]{1,40}$/;
 const PLATE_KEY = /^\d{1,4}(\.\d{1,3})?$/;
 const GROUP = /^[A-Za-z0-9]{1,8}$/;
@@ -100,7 +107,7 @@ export function parseDate(s) {
       s,
     );
   if (!m) return null;
-  const [y, mo, d, h = 0, mi = 0, sec = 0] = m.slice(1, 7).map(Number);
+  const [y, mo, d, h, mi, sec] = m.slice(1, 7).map((x) => (x === undefined ? 0 : Number(x)));
   const ms = m[7] ? Number(m[7].padEnd(3, '0')) : 0;
   const t = Date.UTC(y, mo - 1, d, h, mi, sec, ms);
   const back = new Date(t);
@@ -153,6 +160,24 @@ function oneOf(c, v, where, list, o = {}) {
   if (v === null && o.nullable) return null;
   if (o.empty && v === '') return '';
   if (typeof v !== 'string' || !list.includes(v)) return problem(c, 'bad-enum', where);
+  return v;
+}
+
+/**
+ * Display-only values (profile goal, sex, activity; plan goal, level). The shipped values are
+ * known; any other token of lowercase letters, digits and underscores is kept and counted as
+ * 'unrecognised' (so a real older file is not refused whole). Markup, controls and non-strings
+ * are still refused. Such a value reaches class names and text only, and the token pattern is
+ * safe in both.
+ */
+function display(c, v, where, known, o = {}) {
+  if (v === null && o.nullable) return null;
+  if (o.empty && v === '') return '';
+  if (typeof v !== 'string') return problem(c, 'bad-enum', where);
+  if (known.includes(v)) return v;
+  if (!TOKEN.test(v)) return problem(c, 'bad-enum', where);
+  c.unrecognised++;
+  if (c.unrecognisedWhere.length < LIMITS.problemsMax) c.unrecognisedWhere.push(where);
   return v;
 }
 
@@ -324,8 +349,8 @@ const PLAN = {
   name: { req: true, f: f.name },
   desc: { f: f.note },
   author: { f: f.nameOrNull },
-  goal: { f: (c, v, w) => oneOf(c, v, w, GOALS, { nullable: true, empty: true }) },
-  level: { f: (c, v, w) => oneOf(c, v, w, LEVELS, { nullable: true }) },
+  goal: { f: (c, v, w) => display(c, v, w, GOALS, { nullable: true, empty: true }) },
+  level: { f: (c, v, w) => display(c, v, w, LEVELS, { nullable: true }) },
   daysPerWeek: { f: (c, v, w) => num(c, v, w, 0, 14, { int: true, nullable: true }) },
   weeks: { f: (c, v, w) => num(c, v, w, 0, 520, { int: true, nullable: true }) },
   planDays: {
@@ -364,10 +389,10 @@ const EQUIPMENT = {
 const PROFILE = {
   name: { f: f.name },
   age: { f: (c, v, w) => num(c, v, w, 0, 150, { int: true, nullable: true }) },
-  sex: { f: (c, v, w) => oneOf(c, v, w, SEXES, { nullable: true, empty: true }) },
+  sex: { f: (c, v, w) => display(c, v, w, SEXES, { nullable: true, empty: true }) },
   weight: { f: f.massN },
-  goal: { f: (c, v, w) => oneOf(c, v, w, GOALS, { nullable: true, empty: true }) },
-  activity: { f: (c, v, w) => oneOf(c, v, w, ACTIVITIES, { nullable: true, empty: true }) },
+  goal: { f: (c, v, w) => display(c, v, w, GOALS, { nullable: true, empty: true }) },
+  activity: { f: (c, v, w) => display(c, v, w, ACTIVITIES, { nullable: true, empty: true }) },
   equipment: { f: (c, v, w) => rec(c, v, w, EQUIPMENT) },
 };
 
@@ -435,6 +460,8 @@ const fail = (reason, where = '', problems = null) => ({
  *          | {ok:false, reason:string, where:string, problems:Array<{reason:string,where:string}>}}
  */
 export function validate(input, opts) {
+  if (!Number.isFinite(opts && opts.now))
+    throw new TypeError('validate: opts.now must be a finite number');
   const maxBytes = opts.maxBytes ?? LIMITS.maxBytes;
   if (typeof input !== 'string') return fail('not-text');
   if (input.length > maxBytes) return fail('too-large');
@@ -458,6 +485,8 @@ export function validate(input, opts) {
     dropped: 0,
     futureDates: 0,
     duplicateIds: 0,
+    unrecognised: 0,
+    unrecognisedWhere: [],
   };
   let doc;
   let exported = null;
@@ -494,7 +523,15 @@ export function validate(input, opts) {
       m = null;
     }
     if (!m || !m.ok || !isObj(m.doc)) return fail('migration-failed');
-    const c2 = { now: opts.now, problems: [], dropped: 0, futureDates: 0, duplicateIds: 0 };
+    const c2 = {
+      now: opts.now,
+      problems: [],
+      dropped: 0,
+      futureDates: 0,
+      duplicateIds: 0,
+      unrecognised: 0,
+      unrecognisedWhere: [],
+    };
     try {
       doc = checkSets(c2, m.doc);
     } catch (e) {
@@ -509,6 +546,12 @@ export function validate(input, opts) {
     version,
     exported,
     partial: { partial, reason: partialReason },
-    warnings: { dropped: c.dropped, futureDates: c.futureDates, duplicateIds: c.duplicateIds },
+    warnings: {
+      dropped: c.dropped,
+      futureDates: c.futureDates,
+      duplicateIds: c.duplicateIds,
+      unrecognised: c.unrecognised,
+      unrecognisedWhere: c.unrecognisedWhere,
+    },
   };
 }
