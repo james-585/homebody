@@ -1135,7 +1135,18 @@ function mToast(msg, type='') {
   const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : '';
   const el = document.createElement('div');
   el.className = `m-toast${type?' '+type:''}`;
-  el.innerHTML = icon ? `<span class="m-toast-icon" style="color:${type==='success'?'var(--signal)':'var(--red)'};">${icon}</span><span class="m-toast-text">${msg}</span>` : `<span class="m-toast-text">${msg}</span>`;
+  // The message is data (it can contain plan or exercise names from a file): text nodes only.
+  if (icon) {
+    const ic = document.createElement('span');
+    ic.className = 'm-toast-icon';
+    ic.style.color = type === 'success' ? 'var(--signal)' : 'var(--red)';
+    ic.textContent = icon;
+    el.appendChild(ic);
+  }
+  const tx = document.createElement('span');
+  tx.className = 'm-toast-text';
+  tx.textContent = String(msg);
+  el.appendChild(tx);
   const container = document.getElementById('m-toasts') || document.body;
   container.appendChild(el);
   requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
@@ -5962,18 +5973,25 @@ function mImportData(event) {
   reader.readAsText(file);
 }
 
+// Imported values are data: counts must be real numbers before reaching any template.
+function mSafeCount(x) {
+  const n = Array.isArray(x) ? x.length : 0;
+  return Number.isFinite(n) ? n : 0;
+}
+
 function mShowImportConfirm(data) {
-  const wCount = (data.workouts || []).length;
-  const pCount = Object.keys(data.personalRecords || {}).length;
-  const planCount = (data.userPlans || []).length;
-  const favCount  = (data.favourites || []).length;
+  const wCount = mSafeCount(data.workouts);
+  const pCount = (data.personalRecords && typeof data.personalRecords === 'object' && !Array.isArray(data.personalRecords))
+    ? Object.keys(data.personalRecords).length : 0;
+  const planCount = mSafeCount(data.userPlans);
+  const favCount  = mSafeCount(data.favourites);
   const exportDate = data._exported
     ? new Date(data._exported).toLocaleDateString('en-AU', { day:'numeric', month:'short', year:'numeric' })
     : 'Unknown';
 
   document.getElementById('m-import-summary').innerHTML = `
     <div style="margin-bottom:12px;">
-      <div style="font-size:0.8rem;color:var(--muted);margin-bottom:4px;">Exported: <strong style="color:var(--text);">${exportDate}</strong></div>
+      <div style="font-size:0.8rem;color:var(--muted);margin-bottom:4px;">Exported: <strong style="color:var(--text);">${escHtml(exportDate)}</strong></div>
       ${data._name ? `<div style="font-size:0.8rem;color:var(--muted);">Profile: <strong style="color:var(--text);">${escHtml(data._name)}</strong></div>` : ''}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
@@ -5984,7 +6002,7 @@ function mShowImportConfirm(data) {
         ['⭐ Favourites',  favCount],
       ].map(([label, val]) => `
         <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;">
-          <div style="font-family:'Oswald',sans-serif;font-weight:700;font-size:1.5rem;color:var(--accent);line-height:1;">${val}</div>
+          <div style="font-family:'Oswald',sans-serif;font-weight:700;font-size:1.5rem;color:var(--accent);line-height:1;">${Number(val)}</div>
           <div style="font-size:0.7rem;color:var(--muted);margin-top:4px;">${label}</div>
         </div>`).join('')}
     </div>`;
@@ -6007,8 +6025,51 @@ function mConfirmImport() {
   mCloseModal('m-import-modal');
   mRenderHome();
   mRenderMuscleRecovery();
-  mToast(`✓ Import complete — ${state.workouts.length} workouts loaded`, 'success');
+  mToast(`✓ Import complete — ${mSafeCount(state.workouts)} workouts loaded`, 'success');
   mShowPage('profile');
+}
+
+// Plan files are data: every field is coerced to the type the renderers expect before it
+// reaches state (strings are still escaped at render time; numbers and ids never are).
+function mNormalisePlan(p, id) {
+  const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+  if (!isObj(p)) return null;
+  const str = (v, max) => (typeof v === 'string' || typeof v === 'number') ? String(v).slice(0, max) : '';
+  const num = (v, lo, hi) => (typeof v === 'number' && Number.isFinite(v)) ? Math.min(Math.max(v, lo), hi) : lo;
+  const src = Array.isArray(p.planDays) ? p.planDays : (Array.isArray(p.days) ? p.days : []);
+  const planDays = src.filter(isObj).map(d => {
+    const day = { name: str(d.name, 200), exercises: (Array.isArray(d.exercises) ? d.exercises : []).filter(isObj).map(e => {
+      const ex = { name: str(e.name, 200), trackType: e.trackType === 'time' ? 'time' : 'reps',
+        sets: num(e.sets, 1, 20), reps: num(e.reps, 0, 1000), weight: num(e.weight, 0, 1000) };
+      if (e.time !== undefined) ex.time = num(e.time, 0, 3600);
+      if (typeof e.muscle === 'string') ex.muscle = str(e.muscle, 50);
+      if (typeof e.supersetGroup === 'string' && e.supersetGroup) ex.supersetGroup = str(e.supersetGroup, 50);
+      return ex;
+    }) };
+    if (typeof d.note === 'string') day.note = str(d.note, 500);
+    return day;
+  });
+  const out = {
+    id,
+    name: str(p.name, 200),
+    level: ['beginner', 'intermediate', 'advanced'].includes(p.level) ? p.level : 'beginner',
+    desc: str(p.desc, 500),
+    planDays,
+  };
+  if (typeof p.goal === 'string') out.goal = str(p.goal, 50);
+  if (typeof p.author === 'string') out.author = str(p.author, 100);
+  if (typeof p.weeks === 'number' && Number.isFinite(p.weeks)) out.weeks = num(p.weeks, 0, 52);
+  if (typeof p.daysPerWeek === 'number' && Number.isFinite(p.daysPerWeek)) out.daysPerWeek = num(p.daysPerWeek, 0, 7);
+  if (p._generated === true) out._generated = true;
+  if (typeof p._weekCycle === 'number' && Number.isFinite(p._weekCycle)) out._weekCycle = num(p._weekCycle, 0, 52);
+  if (isObj(p._progressionLog)) {
+    out._progressionLog = {};
+    Object.keys(p._progressionLog).slice(0, 2000).forEach(k => {
+      const v = p._progressionLog[k];
+      if (typeof v === 'number' && Number.isFinite(v)) out._progressionLog[k.slice(0, 200)] = v;
+    });
+  }
+  return out;
 }
 
 // ─── PLAN-ONLY IMPORT ───
@@ -6017,13 +6078,20 @@ function mImportPlanOnly(event) {
   const file = event.target.files[0];
   event.target.value = '';
   if (!file) return;
+  if (file.size > 2 * 1024 * 1024) { mToast('File is too large to import (limit 2 MB)', 'error'); return; }
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
       const data = JSON.parse(e.target.result);
       if (!data._vaultfit) { mToast('Invalid file — not a HomeBody file', 'error'); return; }
-      const plans = data.userPlans || [];
+      const plans = Array.isArray(data.userPlans) ? data.userPlans : [];
       if (!plans.length) { mToast('No plans found in this file', 'error'); return; }
+      const dayList = (q) => (q && Array.isArray(q.planDays)) ? q.planDays : (q && Array.isArray(q.days) ? q.days : []);
+      const tooBig = plans.length > 50 || plans.some(q => {
+        const dl = dayList(q);
+        return dl.length > 28 || dl.some(d => d && Array.isArray(d.exercises) && d.exercises.length > 30);
+      });
+      if (tooBig) { mToast('This plan file is too large to import (max 50 plans, 28 days, 30 exercises a day)', 'error'); return; }
 
       // Show confirmation sheet
       const existing = document.getElementById('m-plan-import-modal');
@@ -6046,12 +6114,12 @@ function mImportPlanOnly(event) {
             <div style="margin-bottom:14px;">
               ${plans.map(p => `
                 <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;">
-                  <div style="font-family:'Oswald',sans-serif;font-weight:700;font-size:0.95rem;color:var(--text);">${escHtml(p.name)}</div>
-                  <div style="font-size:0.72rem;color:var(--muted);margin-top:3px;">${(p.planDays||p.days||[]).length} sessions</div>
+                  <div style="font-family:'Oswald',sans-serif;font-weight:700;font-size:0.95rem;color:var(--text);">${escHtml(p && p.name)}</div>
+                  <div style="font-size:0.72rem;color:var(--muted);margin-top:3px;">${mSafeCount(p && (p.planDays||p.days))} sessions</div>
                 </div>`).join('')}
             </div>
             <div style="background:rgba(232,77,42,0.06);border:1px solid rgba(232,77,42,0.2);border-radius:8px;padding:12px;">
-              <div style="font-size:0.78rem;color:var(--muted);line-height:1.55;">✓ Your <strong style="color:var(--text);">${state.workouts.length} workouts</strong>, PRs, body metrics and profile will not be changed.</div>
+              <div style="font-size:0.78rem;color:var(--muted);line-height:1.55;">✓ Your <strong style="color:var(--text);">${mSafeCount(state.workouts)} workouts</strong>, PRs, body metrics and profile will not be changed.</div>
             </div>
           </div>
           <div class="modal-footer" style="flex-direction:column;gap:8px;">
@@ -6063,25 +6131,30 @@ function mImportPlanOnly(event) {
       modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
 
       document.getElementById('m-plan-import-confirm').addEventListener('click', () => {
-        // Merge: add new plans, skip any with matching id
-        const existingIds = new Set(state.userPlans.map(p => p.id));
-        let added = 0;
+        // Normalise every plan first, then apply all at once (a bad entry never half-applies).
+        const used = new Set(state.userPlans.map(x => x && x.id));
+        let nextId = Date.now();
+        const fresh = [];
         plans.forEach(p => {
-          // Give new id if collision
-          if (existingIds.has(p.id)) p.id = Date.now() + Math.random();
-          state.userPlans.push(p);
-          added++;
+          // Keep the file's own id when it is a safe positive integer not already used (so
+          // "N done" links survive restoring your own plan file); otherwise mint a fresh one.
+          const keep = p && Number.isSafeInteger(p.id) && p.id > 0 && !used.has(p.id);
+          if (!keep) while (used.has(nextId)) nextId++;
+          const np = mNormalisePlan(p, keep ? p.id : nextId);
+          if (np) { used.add(np.id); fresh.push(np); }
         });
+        if (!fresh.length) { modal.remove(); mToast('No valid plans found in this file', 'error'); return; }
+        fresh.forEach(np => state.userPlans.push(np));
+        const added = fresh.length;
         persistSave();
         modal.remove();
         mRenderMyPlans();
         mShowPage('plans');
-        // Switch to My Plans tab
-        document.querySelectorAll('.plan-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.plan-tab-content').forEach(t => t.classList.remove('active'));
-        document.querySelector('.plan-tab').nextElementSibling.classList.add('active');
-        document.getElementById('m-plan-tab-mine').classList.add('active');
         mToast(`✓ ${added} plan${added>1?'s':''} added to My Plans`, 'success');
+        // Switch to the Browse tab, then its My Plans list (the old #m-plan-tab-mine no longer exists)
+        const tabs = document.querySelectorAll('.plan-tab');
+        if (tabs[1] && typeof mSwitchPlanTab === 'function') mSwitchPlanTab('browse', tabs[1]);
+        if (typeof mSwitchBrowseTab === 'function' && document.getElementById('m-browse-mine')) mSwitchBrowseTab('mine');
       });
     } catch { mToast('Could not read file', 'error'); }
   };
@@ -6518,7 +6591,7 @@ function wmRenderExercise(ex, ei) {
         ${hintHtml}
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
-        <button onclick="wmShowExInfo('${ex.name.replace(/'/g,"\\'")}');event.stopPropagation();"
+        <button onclick="wmShowExInfo(wmState.exercises[${ei}].name);event.stopPropagation();"
           style="background:none;border:none;color:var(--muted);font-size:1rem;cursor:pointer;padding:4px;line-height:1;" title="How to do this exercise">ℹ️</button>
         <div style="font-size:0.75rem;color:${allDone?'var(--green)':'var(--muted)'};">
           ${allDone ? '✓' : wmCountDone(ex.sets) + '/' + ex.sets.length}
