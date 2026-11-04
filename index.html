@@ -1129,6 +1129,18 @@ function persistLoad() {
 
 // ─── UTILITIES ───
 function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+// Render-time sink helpers (docs/security.md, "Sink inventory"). escHtml is safe only in HTML text and
+// double-quoted attributes, never inside an inline handler. Numbers from stored or imported data reach markup
+// only through hbNum (a finite number, else 0); enum-like tokens reach markup only through a table lookup.
+function hbNum(v) { const n = typeof v === 'number' ? v : (typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN); return Number.isFinite(n) ? n : 0; }
+function hbOwn(table, key) { return typeof key === 'string' && Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined; }
+const HB_PLAN_LEVELS = { beginner: 'beginner', intermediate: 'intermediate', advanced: 'advanced' };
+// Plan level -> { cls, label }: the class comes from the table's own value (never the raw token); an unknown token
+// shows the fixed "unrecognised" label (import-preview.md, io.enum.unknown) and no class.
+function hbPlanLevel(level) {
+  const v = level == null || level === '' ? 'beginner' : hbOwn(HB_PLAN_LEVELS, level);
+  return v ? { cls: v, label: v } : { cls: '', label: "a setting HomeBody doesn't recognise" };
+}
 
 function mToast(msg, type='') {
   const icons = { success:'✓', error:'✕', '':'' };
@@ -1963,7 +1975,7 @@ function mRenderHome() {
 }
 
 function goalLabel(goal) {
-  return {lose_fat:'Fat loss goal 🔥',build_muscle:'Muscle building goal 💪',increase_strength:'Strength goal 🏋️',improve_fitness:'Fitness goal ❤️'}[goal] || 'Ready to train?';
+  return hbOwn({lose_fat:'Fat loss goal 🔥',build_muscle:'Muscle building goal 💪',increase_strength:'Strength goal 🏋️',improve_fitness:'Fitness goal ❤️'}, goal) || 'Ready to train?';
 }
 
 function mRenderTodayAction() {
@@ -2000,7 +2012,7 @@ function mRenderTodayAction() {
   });
 
   const exCount = (todayDay.exercises||[]).length;
-  const setCount = (todayDay.exercises||[]).reduce((s,e)=>s+(e.sets||0),0);
+  const setCount = (todayDay.exercises||[]).reduce((s,e)=>s+hbNum(e.sets),0);
   document.getElementById('m-today-name').textContent = todayDay.name;
   actionEl.style.display = 'block';
   actionEl._day = todayDay;
@@ -2011,8 +2023,8 @@ function mRenderTodayAction() {
   const doneEl = document.getElementById('m-today-done');
 
   if (doneToday) {
-    const dur = doneToday.duration ? Math.round(doneToday.duration/60) + 'min' : null;
-    const sets = doneToday.exercises ? doneToday.exercises.reduce((s,e)=>s+(e.sets?.length||e.sets||0),0) : null;
+    const dur = hbNum(doneToday.duration) ? Math.round(hbNum(doneToday.duration)/60) + 'min' : null;
+    const sets = doneToday.exercises ? doneToday.exercises.reduce((s,e)=>s+(Array.isArray(e.sets)?e.sets.length:hbNum(e.sets)),0) : null;
     metaEl.textContent = todayPlan.name;
     if (btnEl)  btnEl.style.display  = 'none';
     if (doneEl) {
@@ -2065,22 +2077,22 @@ function mRenderProgressLog() {
   el.innerHTML = sorted.map(w => {
     const date = new Date(w.date).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
     const exRows = (w.exercises||[]).map(e => {
-      const eff = e.trackType==='time' ? `${e.time}s` : `${e.reps} reps`;
-      const wt = e.weight>0 ? ` @ ${e.weight}kg` : '';
-      return `<div class="log-ex-item" style="cursor:pointer;" onclick="mShowExerciseProgress(this.dataset.name)" data-name="${escHtml(e.name)}"><div>${escHtml(e.name)}</div><div class="log-ex-detail">${e.sets} × ${eff}${wt} <span style="color:var(--accent);font-size:0.65rem;margin-left:4px;">📈</span></div></div>`;;
+      const eff = e.trackType==='time' ? `${hbNum(e.time)}s` : `${hbNum(e.reps)} reps`;
+      const wt = hbNum(e.weight)>0 ? ` @ ${hbNum(e.weight)}kg` : '';
+      return `<div class="log-ex-item" style="cursor:pointer;" onclick="mShowExerciseProgress(this.dataset.name)" data-name="${escHtml(e.name)}"><div>${escHtml(e.name)}</div><div class="log-ex-detail">${hbNum(e.sets)} × ${eff}${wt} <span style="color:var(--accent);font-size:0.65rem;margin-left:4px;">📈</span></div></div>`;;
     }).join('');
-    const grade = w.grade ? `<span style="font-size:0.7rem;background:rgba(232,77,42,0.1);color:var(--accent);padding:2px 7px;border-radius:8px;font-family:'Oswald',sans-serif;font-weight:700;">${w.grade}</span>` : '';
+    const grade = w.grade ? `<span style="font-size:0.7rem;background:rgba(232,77,42,0.1);color:var(--accent);padding:2px 7px;border-radius:8px;font-family:'Oswald',sans-serif;font-weight:700;">${escHtml(w.grade)}</span>` : '';
     return `<div class="log-entry">
       <div class="log-entry-hdr">
         <div><div class="log-entry-date">${date}</div><div class="log-entry-name">${escHtml(w.name||'Workout')}</div></div>
         <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
           ${grade}
-          <button class="log-edit-btn" onclick="mShowWorkout(${w.id})" style="background:var(--surface2);border-color:var(--border);">👁</button>
-          <button class="log-edit-btn" onclick="mOpenEdit(${w.id})">✏️</button>
+          <button class="log-edit-btn" onclick="mShowWorkout(${hbNum(w.id)})" style="background:var(--surface2);border-color:var(--border);">👁</button>
+          <button class="log-edit-btn" onclick="mOpenEdit(${hbNum(w.id)})">✏️</button>
         </div>
       </div>
       <div class="log-entry-exs">${exRows}</div>
-      <div class="log-mini"><span>${w.exercises?.length||0} exercises</span><span class="orange">~${w.calories||0} kcal</span>${w.rpe?`<span>RPE ${w.rpe}</span>`:''}</div>
+      <div class="log-mini"><span>${w.exercises?.length||0} exercises</span><span class="orange">~${hbNum(w.calories)} kcal</span>${hbNum(w.rpe)?`<span>RPE ${hbNum(w.rpe)}</span>`:''}</div>
     </div>`;
   }).join('');
 }
@@ -2266,18 +2278,20 @@ function mRenderPRs() {
   el.innerHTML=prs.slice(0,8).map(([ex,pr])=>{
     // Find the best logged set for this exercise to get reps for 1RM calc
     let bestReps = 1;
+    const prVal = hbNum(pr && pr.value);
+    const prUnit = pr && (pr.unit === 'kg' || pr.unit === 'sec') ? pr.unit : '';
     for (const w of state.workouts) {
       const e = w.exercises.find(x=>x.name===ex);
-      if (e && e.weight===pr.value && e.reps>0) { bestReps=e.reps; break; }
+      if (e && hbNum(e.weight)===prVal && hbNum(e.reps)>0) { bestReps=hbNum(e.reps); break; }
     }
-    const orm = pr.unit==='kg' ? calcEpley1RM(pr.value, bestReps) : null;
+    const orm = prUnit==='kg' ? calcEpley1RM(prVal, bestReps) : null;
     const std = orm ? getStrengthLevel(ex, orm, bw) : null;
     return `<div class="pr-item">
       <div>
         <div class="pr-name">${escHtml(ex)}</div>
-        ${orm && orm !== pr.value ? `<div style="font-size:0.68rem;color:var(--muted);margin-top:1px;">e1RM: <span style="color:var(--accent);font-weight:600;">${orm}kg</span>${std?` · <span style="color:${std.color}">${std.level}</span>`:''}</div>` : ''}
+        ${orm && orm !== prVal ? `<div style="font-size:0.68rem;color:var(--muted);margin-top:1px;">e1RM: <span style="color:var(--accent);font-weight:600;">${hbNum(orm)}kg</span>${std?` · <span style="color:${std.color}">${std.level}</span>`:''}</div>` : ''}
       </div>
-      <div class="pr-val">${pr.value}<span class="pr-unit">${pr.unit}</span></div>
+      <div class="pr-val">${prVal}<span class="pr-unit">${prUnit}</span></div>
     </div>`;
   }).join('');
 }
@@ -2307,7 +2321,7 @@ function mRenderMuscleRecovery() {
         if (!ex) return;
         const key = ex.muscle;
         if (!MUSCLES.includes(key)) return;
-        sets[key] = (sets[key] || 0) + (e.sets || 0);
+        sets[key] = (sets[key] || 0) + hbNum(e.sets);
         if (!lastHit[key] || ts > lastHit[key]) lastHit[key] = ts;
       });
     });
@@ -3724,24 +3738,24 @@ function mRenderLog() {
   container.innerHTML=state.workouts.map(w=>{
     const date=new Date(w.date).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
     const exRows=w.exercises.map(e=>{
-      const eff=e.trackType==='time'?`${e.time}s`:`${e.reps} reps`;
-      const wt=e.weight>0?` @ ${e.weight}kg`:'';
-      return `<div class="log-ex-item" style="cursor:pointer;" onclick="mShowExerciseProgress(this.dataset.name)" data-name="${escHtml(e.name)}"><div>${escHtml(e.name)}</div><div class="log-ex-detail">${e.sets} × ${eff}${wt} <span style="color:var(--accent);font-size:0.65rem;margin-left:4px;">📈</span></div></div>`;;
+      const eff=e.trackType==='time'?`${hbNum(e.time)}s`:`${hbNum(e.reps)} reps`;
+      const wt=hbNum(e.weight)>0?` @ ${hbNum(e.weight)}kg`:'';
+      return `<div class="log-ex-item" style="cursor:pointer;" onclick="mShowExerciseProgress(this.dataset.name)" data-name="${escHtml(e.name)}"><div>${escHtml(e.name)}</div><div class="log-ex-detail">${hbNum(e.sets)} × ${eff}${wt} <span style="color:var(--accent);font-size:0.65rem;margin-left:4px;">📈</span></div></div>`;;
     }).join('');
     return `<div class="log-entry">
       <div class="log-entry-hdr">
         <div><div class="log-entry-date">${date}</div><div class="log-entry-name">${escHtml(w.name)}</div></div>
         <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
-          <button class="log-edit-btn" onclick="mShowWorkout(${w.id})" style="background:var(--surface2);border-color:var(--border);">👁 Show</button>
-          <button class="log-edit-btn" onclick="mOpenEdit(${w.id})">✏️ Edit</button>
-          <button class="log-edit-btn" onclick="mLoadPastWorkout(${w.id})" style="background:var(--accent);color:#000;border-color:var(--accent);">▶ Load</button>
+          <button class="log-edit-btn" onclick="mShowWorkout(${hbNum(w.id)})" style="background:var(--surface2);border-color:var(--border);">👁 Show</button>
+          <button class="log-edit-btn" onclick="mOpenEdit(${hbNum(w.id)})">✏️ Edit</button>
+          <button class="log-edit-btn" onclick="mLoadPastWorkout(${hbNum(w.id)})" style="background:var(--accent);color:#000;border-color:var(--accent);">▶ Load</button>
         </div>
       </div>
       <div class="log-entry-stats">
-        <div class="log-mini"><span>${w.totalSets}</span> sets</div>
-        <div class="log-mini"><span class="orange">~${w.calories||0}</span> kcal</div>
-        ${w.duration?`<div class="log-mini"><span>${w.duration}</span> min</div>`:''}
-        ${w.totalVolume>0?`<div class="log-mini"><span>${w.totalVolume>999?(w.totalVolume/1000).toFixed(1)+'k':w.totalVolume}</span> kg vol</div>`:''}
+        <div class="log-mini"><span>${hbNum(w.totalSets)}</span> sets</div>
+        <div class="log-mini"><span class="orange">~${hbNum(w.calories)}</span> kcal</div>
+        ${hbNum(w.duration)?`<div class="log-mini"><span>${hbNum(w.duration)}</span> min</div>`:''}
+        ${hbNum(w.totalVolume)>0?`<div class="log-mini"><span>${hbNum(w.totalVolume)>999?(hbNum(w.totalVolume)/1000).toFixed(1)+'k':hbNum(w.totalVolume)}</span> kg vol</div>`:''}
       </div>
       <div class="log-ex-list">${exRows}</div>
     </div>`;
@@ -3833,7 +3847,7 @@ function mRenderWeeklyVolumeChart() {
         if (!found) return;
         const m = found.muscle;
         const grp = (m==='Biceps'||m==='Triceps') ? 'Arms' : (m==='Rear Delts' ? 'Shoulders' : m);
-        if (sets[grp] !== undefined) sets[grp] += (e.sets || 0);
+        if (sets[grp] !== undefined) sets[grp] += hbNum(e.sets);
       });
     });
 
@@ -4362,7 +4376,7 @@ function mRenderPlanCalendar() {
     const onclick = scheduledDays.length > 0 && !isPast
       ? `onclick="mCalLoadDay(${dow})"`
       : logged.length > 0
-      ? `onclick="mShowWorkout(${logged[0].id})"`
+      ? `onclick="mShowWorkout(${hbNum(logged[0].id)})"`
       : '';
 
     html += `<div style="min-height:52px;background:${cellBg};border:${border};border-radius:8px;padding:6px 2px;cursor:${onclick?'pointer':'default'};" ${onclick}>
@@ -4433,17 +4447,18 @@ function mRenderMyPlans() {
   if (!state.userPlans.length) { el.innerHTML = '<div class="empty-state" style="padding:30px 20px;"><div class="icon">📋</div><p>No saved plans yet.<br>Generate one in the ✨ Generate tab.</p></div>'; return; }
   el.innerHTML=state.userPlans.map((p,i)=>{
     const dl=p.planDays||(Array.isArray(p.days)?p.days:[]);
+    const lv=hbPlanLevel(p.level);
     return `<div class="plan-card" onclick="mOpenPlanDetail(window._userPlanReg[${i}])">
-      <div class="plan-card-strip ${p.level||'beginner'}"></div>
-      <div class="plan-card-hdr"><div class="plan-level-badge ${p.level||'beginner'}">${p.level||'beginner'}</div><div class="plan-card-name">${escHtml(p.name)}</div><div class="plan-card-desc">${escHtml(p.desc||'')}</div></div>
+      <div class="plan-card-strip ${lv.cls}"></div>
+      <div class="plan-card-hdr"><div class="plan-level-badge ${lv.cls}">${escHtml(lv.label)}</div><div class="plan-card-name">${escHtml(p.name)}</div><div class="plan-card-desc">${escHtml(p.desc||'')}</div></div>
       <div class="plan-card-stats">
         <div><div class="plan-stat-val">${dl.length||'—'}</div><div class="plan-stat-label">Days</div></div>
-        <div><div class="plan-stat-val">${p.weeks||'—'}</div><div class="plan-stat-label">Weeks</div></div>
+        <div><div class="plan-stat-val">${hbNum(p.weeks)||'—'}</div><div class="plan-stat-label">Weeks</div></div>
         <div><div class="plan-stat-val">${dl.flatMap(d=>d.exercises||[]).length}</div><div class="plan-stat-label">Exercises</div></div>
       </div>
       ${(()=>{
         const MC={'Back':'#4da6ff','Chest':'#ff5c35','Shoulders':'#f59e0b','Biceps':'#E84D2A','Triceps':'#00d68f','Quads':'#a78bfa','Glutes':'#f472b6','Hamstrings':'#fb923c'};
-        const muscles=[...new Set(dl.flatMap(d=>(d.exercises||[]).map(e=>MC[e.muscle]?e.muscle:null).filter(Boolean)))].slice(0,4);
+        const muscles=[...new Set(dl.flatMap(d=>(d.exercises||[]).map(e=>hbOwn(MC,e.muscle)?e.muscle:null).filter(Boolean)))].slice(0,4);
         const done=state.workouts.filter(w=>w.planId===p.id).length;
         if(!muscles.length&&!done)return'';
         return`<div style="display:flex;gap:5px;flex-wrap:wrap;padding:0 14px 10px;align-items:center;">
@@ -4452,8 +4467,8 @@ function mRenderMyPlans() {
         </div>`;
       })()}
       <div class="plan-card-footer">
-        <button class="btn-danger" style="padding:6px 12px;font-size:0.65rem;" onclick="event.stopPropagation();mDeletePlan(${p.id})">Delete</button>
-        <button class="btn-secondary" style="padding:7px 12px;font-size:0.7rem;border-radius:6px;" onclick="event.stopPropagation();mEditPlan(${p.id})">✏️ Edit</button>
+        <button class="btn-danger" style="padding:6px 12px;font-size:0.65rem;" onclick="event.stopPropagation();mDeletePlan(${hbNum(p.id)})">Delete</button>
+        <button class="btn-secondary" style="padding:7px 12px;font-size:0.7rem;border-radius:6px;" onclick="event.stopPropagation();mEditPlan(${hbNum(p.id)})">✏️ Edit</button>
         <button class="btn-primary" style="padding:7px 14px;font-size:0.7rem;border-radius:6px;" onclick="event.stopPropagation();mOpenPlanDetail(window._userPlanReg[${i}])">View →</button>
       </div>
     </div>`;
@@ -4470,7 +4485,7 @@ function mRenderPlanDayExerciseList(exercises) {
   const seenDividers = new Set();
 
   return exercises.map(e => {
-    const detail = `${e.sets}×${e.trackType==='time'?(e.time||0)+'s':(e.reps||0)+' reps'}${e.weight>0?` @${e.weight}kg`:''}`;
+    const detail = `${hbNum(e.sets)}×${e.trackType==='time'?hbNum(e.time)+'s':hbNum(e.reps)+' reps'}${hbNum(e.weight)>0?` @${hbNum(e.weight)}kg`:''}`;
     const inGroup = e.supersetGroup && groupCounts[e.supersetGroup] > 1;
     let divider = '';
     let badge = '';
@@ -4489,10 +4504,11 @@ function mRenderPlanDayExerciseList(exercises) {
 function mOpenPlanDetail(plan) {
   const dl=plan.planDays||(Array.isArray(plan.days)?plan.days:[]);
   const allEx=dl.flatMap(d=>d.exercises||[]);
-  document.getElementById('mpd-level').innerHTML=`<span class="plan-level-badge ${plan.level||'beginner'}">${plan.level||'beginner'}</span>`;
+  const lv=hbPlanLevel(plan.level);
+  document.getElementById('mpd-level').innerHTML=`<span class="plan-level-badge ${lv.cls}">${escHtml(lv.label)}</span>`;
   document.getElementById('mpd-name').textContent=plan.name;
   document.getElementById('mpd-desc').textContent=plan.desc||'';
-  document.getElementById('mpd-stats').innerHTML=[{l:'Days',v:dl.length||plan.daysPerWeek||'—'},{l:'Weeks',v:plan.weeks||'—'},{l:'Exercises',v:allEx.length||'—'},{l:'Sets',v:allEx.reduce((s,e)=>s+(e.sets||0),0)||'—'}]
+  document.getElementById('mpd-stats').innerHTML=[{l:'Days',v:dl.length||hbNum(plan.daysPerWeek)||'—'},{l:'Weeks',v:hbNum(plan.weeks)||'—'},{l:'Exercises',v:allEx.length||'—'},{l:'Sets',v:allEx.reduce((s,e)=>s+hbNum(e.sets),0)||'—'}]
     .map(s=>`<div class="plan-detail-stat"><div class="plan-detail-stat-val">${s.v}</div><div class="plan-detail-stat-lbl">${s.l}</div></div>`).join('');
 
   // Register day loader for in-accordion buttons
@@ -4566,12 +4582,12 @@ function mOpenEdit(id) {
     div.innerHTML=`
       <input list="m-ex-suggestions" class="ex-name-m" value="${escHtml(e.name)}" placeholder="Exercise" autocomplete="off">
       <div class="ex-row-grid">
-        <div><div class="mini-label">Sets</div><input class="mini-input" type="number" value="${e.sets||''}" min="1"></div>
+        <div><div class="mini-label">Sets</div><input class="mini-input" type="number" value="${hbNum(e.sets)||''}" min="1"></div>
         <div><div class="mini-label">Type</div><div class="type-pill"><button class="${e.trackType!=='time'?'active':''}" onclick="mSetEditType(this,'reps')">Reps</button><button class="${e.trackType==='time'?'active':''}" onclick="mSetEditType(this,'time')">Time</button></div></div>
-        <div><div class="mini-label">${e.trackType==='time'?'Secs':'Reps'}</div><input class="mini-input" type="number" value="${e.trackType==='time'?(e.time||0):(e.reps||0)}" min="0"></div>
+        <div><div class="mini-label">${e.trackType==='time'?'Secs':'Reps'}</div><input class="mini-input" type="number" value="${e.trackType==='time'?hbNum(e.time):hbNum(e.reps)}" min="0"></div>
         <button class="btn-rm" onclick="this.closest('.edit-ex-row').remove()">×</button>
       </div>
-      <div style="margin-top:6px;"><div class="mini-label">Weight (kg)</div><input class="mini-input" type="number" value="${e.weight||''}" min="0" step="0.5" style="width:90px;"></div>`;
+      <div style="margin-top:6px;"><div class="mini-label">Weight (kg)</div><input class="mini-input" type="number" value="${hbNum(e.weight)||''}" min="0" step="0.5" style="width:90px;"></div>`;
     rows.appendChild(div);
   });
   document.getElementById('med-delete-btn').onclick=()=>{
@@ -4681,9 +4697,9 @@ function mRenderEquipManager() {
 
     if (cat.type === 'weighted') {
       // Show owned weights as removable tags + add picker
-      const owned = (eq[cat.id] || []).slice().sort((a,b)=>a-b);
+      const owned = (Array.isArray(eq[cat.id]) ? eq[cat.id] : []).filter(w => typeof w === 'number' && Number.isFinite(w)).sort((a,b)=>a-b);
       const tags = owned.map(w =>
-        `<span class="equip-weight-tag">${w}${cat.unit} <span class="remove-x" onclick="mEquipRemoveWeight('${cat.id}',${w})">×</span></span>`
+        `<span class="equip-weight-tag">${hbNum(w)}${cat.unit} <span class="remove-x" onclick="mEquipRemoveWeight('${cat.id}',${hbNum(w)})">×</span></span>`
       ).join('');
       const presetOptions = cat.presets
         .filter(p => !owned.includes(p))
@@ -4720,7 +4736,7 @@ function mRenderEquipManager() {
         </div>`
       ).join('');
       const platesHtml = cat.plates.map(pw => {
-        const count = plateCounts[pw] || 0;
+        const count = hbNum(plateCounts[pw]);
         return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;">
           <span style="font-size:0.82rem;">${pw}kg plates</span>
           <div style="display:flex;align-items:center;gap:8px;">
@@ -4897,8 +4913,8 @@ function mRenderMilestones() {
   }
   const achieved = MILESTONES.filter(m => m.check(state));
   const locked = MILESTONES.filter(m => !m.check(state));
-  const totalVol = state.workouts.reduce((t,w)=>t+(w.totalVolume||0),0);
-  const totalCals = state.workouts.reduce((t,w)=>t+(w.calories||0),0);
+  const totalVol = state.workouts.reduce((t,w)=>t+hbNum(w.totalVolume),0);
+  const totalCals = state.workouts.reduce((t,w)=>t+hbNum(w.calories),0);
 
   el.innerHTML = `
     <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
@@ -4961,11 +4977,11 @@ function mEditPlan(planId) {
           <div class="pe-ex-row" id="pe-ex-${di}-${ei}" style="display:grid;grid-template-columns:1fr 50px 50px 55px 36px;gap:5px;margin-bottom:6px;align-items:center;">
             <input class="form-input" value="${escHtml(ex.name)}" id="pe-name-${di}-${ei}"
               list="m-ex-suggestions" style="font-size:0.78rem;padding:7px 9px;">
-            <input class="form-input" type="number" value="${ex.sets||3}" id="pe-sets-${di}-${ei}" min="1" max="10"
+            <input class="form-input" type="number" value="${hbNum(ex.sets)||3}" id="pe-sets-${di}-${ei}" min="1" max="10"
               style="font-size:0.78rem;padding:7px 6px;text-align:center;" placeholder="Sets">
-            <input class="form-input" type="number" value="${ex.reps||0}" id="pe-reps-${di}-${ei}" min="0" max="100"
+            <input class="form-input" type="number" value="${hbNum(ex.reps)}" id="pe-reps-${di}-${ei}" min="0" max="100"
               style="font-size:0.78rem;padding:7px 6px;text-align:center;" placeholder="Reps">
-            <input class="form-input" type="number" value="${ex.weight||0}" id="pe-weight-${di}-${ei}" min="0" step="0.5"
+            <input class="form-input" type="number" value="${hbNum(ex.weight)}" id="pe-weight-${di}-${ei}" min="0" step="0.5"
               style="font-size:0.78rem;padding:7px 6px;text-align:center;" placeholder="kg">
             <button onclick="peRemoveEx(${di},${ei})"
               style="background:none;border:1px solid var(--border);color:var(--red);border-radius:7px;cursor:pointer;padding:0;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:0.9rem;">✕</button>
@@ -5073,9 +5089,9 @@ function epRender() {
     if (!ex) return;
     const date = new Date(w.date);
     let val;
-    if (epMetric === 'weight') val = ex.weight || 0;
-    else if (epMetric === 'reps') val = ex.reps || 0;
-    else val = (ex.weight || 0) * (ex.reps || 0) * (ex.sets || 1);
+    if (epMetric === 'weight') val = hbNum(ex.weight);
+    else if (epMetric === 'reps') val = hbNum(ex.reps);
+    else val = hbNum(ex.weight) * hbNum(ex.reps) * (hbNum(ex.sets) || 1);
     dataPoints.push({ date, val, workout: w });
   });
 
@@ -5146,7 +5162,7 @@ function epRender() {
     const ex = p.workout.exercises.find(e=>e.name===epCurrentExercise);
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface2);border-radius:8px;margin-bottom:5px;font-size:0.78rem;">
       <span style="color:var(--muted);">${dateStr}</span>
-      <span style="font-family:'Oswald',sans-serif;font-weight:700;">${ex.sets}×${ex.reps||ex.time+'s'} ${ex.weight?'@ '+ex.weight+'kg':''}</span>
+      <span style="font-family:'Oswald',sans-serif;font-weight:700;">${hbNum(ex.sets)}×${hbNum(ex.reps)||hbNum(ex.time)+'s'} ${hbNum(ex.weight)?'@ '+hbNum(ex.weight)+'kg':''}</span>
       <span style="font-family:'Oswald',sans-serif;font-weight:700;color:var(--accent);">${p.val.toFixed(1)}${unit}</span>
     </div>`;
   }).join('');
@@ -5716,7 +5732,7 @@ function mLogBodyMetric() {
 function mRenderBodyMetricsChart() {
   const el = document.getElementById('m-bm-chart');
   if (!el) return;
-  const metrics = (state.bodyMetrics||[]).filter(m=>m.weight).slice(0,30).reverse();
+  const metrics = (state.bodyMetrics||[]).filter(m=>hbNum(m.weight)).slice(0,30).reverse().map(m=>({date:m.date,weight:hbNum(m.weight)}));
   if (!metrics.length) {
     el.innerHTML='<div style="color:var(--muted);font-size:0.78rem;">No weight data yet.</div>';
     return;
@@ -5763,8 +5779,8 @@ function mRenderFavouritesList(){
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
       <div><div style="font-size:0.85rem;font-weight:500;">${escHtml(name)}</div>${ex?`<div style="font-size:0.68rem;color:var(--muted);">${ex.muscle} · ${ex.equip}</div>`:''}</div>
       <div style="display:flex;gap:6px;">
-        <button onclick="mAddExFromLib('${name.replace(/'/g,"\\'")}');mCloseModal('m-favs-modal');" style="font-family:'Oswald',sans-serif;font-weight:700;font-size:0.65rem;letter-spacing:0.06em;text-transform:uppercase;padding:5px 10px;border-radius:6px;background:var(--accent);color:#000;border:none;cursor:pointer;">+ Add</button>
-        <button onclick="mToggleFav('${name.replace(/'/g,"\\'")}');mRenderFavouritesList();" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 4px;">🗑</button>
+        <button data-name="${escHtml(name)}" onclick="mAddExFromLib(this.dataset.name);mCloseModal('m-favs-modal');" style="font-family:'Oswald',sans-serif;font-weight:700;font-size:0.65rem;letter-spacing:0.06em;text-transform:uppercase;padding:5px 10px;border-radius:6px;background:var(--accent);color:#000;border:none;cursor:pointer;">+ Add</button>
+        <button data-name="${escHtml(name)}" onclick="mToggleFav(this.dataset.name);mRenderFavouritesList();" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 4px;">🗑</button>
       </div>
     </div>`;
   }).join('');
@@ -6410,10 +6426,10 @@ function mStartWorkoutMode(day, planName) {
       trackType: e.trackType || 'reps',
       unilateral: isUnilateral,
       supersetGroup: e.supersetGroup || null,
-      sets: Array.from({ length: e.sets || 1 }, () => ({
-        reps: e.trackType === 'time' ? 0 : (e.reps || 0),
-        time: e.trackType === 'time' ? (e.time || 0) : 0,
-        weight: e.weight || 0,
+      sets: Array.from({ length: Math.min(100, Math.max(1, Math.floor(hbNum(e.sets)) || 1)) }, () => ({
+        reps: e.trackType === 'time' ? 0 : hbNum(e.reps),
+        time: e.trackType === 'time' ? hbNum(e.time) : 0,
+        weight: hbNum(e.weight),
         trackType: e.trackType || 'reps',
         done: isUnilateral ? false : false,   // for bilateral
         doneL: isUnilateral ? false : undefined, // for unilateral
@@ -6536,12 +6552,12 @@ function wmRenderExercise(ex, ei) {
         <div class="wm-set-num">${si + 1}</div>
         <div>
           <div class="wm-set-lbl">${isTime ? 'Secs' : 'Reps'}</div>
-          <input class="wm-set-input" type="number" min="0" value="${val||''}" placeholder="${isTime?'30':'10'}"
+          <input class="wm-set-input" type="number" min="0" value="${hbNum(val)||''}" placeholder="${isTime?'30':'10'}"
             onchange="wmEditSet(${ei},${si},'${isTime?'time':'reps'}',this.value)">
         </div>
         <div>
           <div class="wm-set-lbl">kg/hand</div>
-          <input class="wm-set-input" type="number" min="0" step="0.5" value="${set.weight||''}" placeholder="—"
+          <input class="wm-set-input" type="number" min="0" step="0.5" value="${hbNum(set.weight)||''}" placeholder="—"
             onchange="wmEditSet(${ei},${si},'weight',this.value)">
         </div>
         <button class="wm-tick${set.doneL ? ' done' : ''}" id="wm-tick-${ei}-${si}-L" onclick="wmTickSide(${ei},${si},'L')" style="width:38px;height:34px;font-size:0.7rem;letter-spacing:0.04em;">
@@ -6556,12 +6572,12 @@ function wmRenderExercise(ex, ei) {
         <div class="wm-set-num">${si + 1}</div>
         <div>
           <div class="wm-set-lbl">${isTime ? 'Secs' : 'Reps'}</div>
-          <input class="wm-set-input" type="number" min="0" value="${val||''}" placeholder="${isTime?'30':'10'}"
+          <input class="wm-set-input" type="number" min="0" value="${hbNum(val)||''}" placeholder="${isTime?'30':'10'}"
             onchange="wmEditSet(${ei},${si},'${isTime?'time':'reps'}',this.value)">
         </div>
         <div>
           <div class="wm-set-lbl">kg</div>
-          <input class="wm-set-input" type="number" min="0" step="0.5" value="${set.weight||''}" placeholder="—"
+          <input class="wm-set-input" type="number" min="0" step="0.5" value="${hbNum(set.weight)||''}" placeholder="—"
             onchange="wmEditSet(${ei},${si},'weight',this.value)">
         </div>
         <div></div>
@@ -8012,9 +8028,9 @@ function mShowWorkout(id) {
 
   const exHTML = displayEx.map(e => {
     const repsStr = e.trackType === 'time'
-      ? `${e.sets} sets × ${e.time}s`
-      : `${e.sets} sets × ${e.reps} reps`;
-    const wtStr = e.weight > 0 ? `${e.weight} kg` : '';
+      ? `${hbNum(e.sets)} sets × ${hbNum(e.time)}s`
+      : `${hbNum(e.sets)} sets × ${hbNum(e.reps)} reps`;
+    const wtStr = hbNum(e.weight) > 0 ? `${hbNum(e.weight)} kg` : '';
     const badge = e._bothSides
       ? `<span style="font-size:0.7rem;background:rgba(232,77,42,0.12);color:var(--accent);border:1px solid rgba(232,77,42,0.25);border-radius:4px;padding:2px 6px;margin-left:6px;font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:0.07em;vertical-align:middle;">BOTH SIDES</span>`
       : '';
