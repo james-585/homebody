@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import {
   io,
   opts,
+  NOW,
   REAL_TEXT,
   real,
   file,
@@ -465,12 +466,11 @@ test('display-only enums: an unknown lowercase token is kept and reported by pat
     edit((f) => (f.workouts[0].exercises[0].side = 'middle')),
     'bad-enum',
   );
-  // the synthetic fixtures use goal "general": they now import
-  assert.equal(
-    V(readFileSync(join(SYNTHETIC_DIR, 'homebody_v1.json'), 'utf8')).ok,
-    false,
-    'not a file: no _vaultfit',
-  );
+  // the synthetic stored documents use goal "general": wrapped as a file they now import, with a warning
+  const stored = JSON.parse(readFileSync(join(SYNTHETIC_DIR, 'homebody_v1.json'), 'utf8'));
+  const wrapped = V({ _vaultfit: true, _version: 1, ...stored });
+  assert.equal(wrapped.ok, true);
+  assert.equal(wrapped.warnings.unrecognised, 1);
 });
 
 test('dates: date-only, HH:MM, seconds and offset forms are accepted; impossible ones are not', () => {
@@ -500,18 +500,8 @@ test('dates: date-only, HH:MM, seconds and offset forms are accepted; impossible
   }
 });
 
-test('invisible and direction characters are refused: zero-width, marks, BOM inside, noncharacters', () => {
-  for (const c of [
-    '\u200B',
-    '\u200C',
-    '\u200D',
-    '\u200E',
-    '\u200F',
-    '\u061C',
-    '\uFEFF',
-    '\uFFFE',
-    '\uFFFF',
-  ]) {
+test('invisible characters: zero-width space, BOM inside, noncharacters, word joiners refused; joiners allowed', () => {
+  for (const c of ['​', '﻿', '￾', '￿', '⁠', '⁡', '⁤']) {
     refuses(
       edit((f) => (f.workouts[0].name = `a${c}b`)),
       'bad-chars',
@@ -521,6 +511,44 @@ test('invisible and direction characters are refused: zero-width, marks, BOM ins
       'bad-chars',
     );
   }
+  // direction marks: refused in names, allowed in notes
+  for (const c of ['‎', '‏', '؜']) {
+    refuses(
+      edit((f) => (f.workouts[0].name = `a${c}b`)),
+      'bad-chars',
+    );
+    assert.equal(V(edit((f) => (f.workouts[0].notes = `a${c}b`))).ok, true);
+  }
+  // zero-width joiner and non-joiner: allowed everywhere (emoji sequences, Persian, Indic)
+  for (const c of ['‌', '‍']) {
+    assert.equal(V(edit((f) => (f.workouts[0].name = `a${c}b`))).ok, true);
+    assert.equal(V(edit((f) => (f.workouts[0].notes = `a${c}b`))).ok, true);
+  }
+  assert.equal(V(edit((f) => (f.workouts[0].name = 'soft­hyphen'))).ok, true);
+});
+
+test('emoji sequences round-trip: export then validate gives zero refusals', () => {
+  const ZWJ = '‍';
+  const woman = `\u{1F3CB}️${ZWJ}♀️`; // person lifting weights, woman
+  const family = `\u{1F468}${ZWJ}\u{1F469}${ZWJ}\u{1F467}${ZWJ}\u{1F466}`;
+  const state = {
+    workouts: [
+      {
+        ...real().workouts[0],
+        name: `${woman} Push day ${family}`,
+        notes: `great ${woman} ${family}\nمی‌خواهم`,
+      },
+    ],
+    favourites: [`${woman} Squat`],
+    personalRecords: { [`${woman} Press`]: { value: 40, unit: 'kg' } },
+  };
+  const e = io.buildExport(state, { now: NOW });
+  assert.equal(e.ok, true);
+  assert.deepEqual(e.warnings, { refused: [], dropped: 0 });
+  const back = V(e.text);
+  assert.equal(back.ok, true);
+  assert.equal(back.doc.workouts[0].name, state.workouts[0].name);
+  assert.equal(back.doc.workouts[0].notes, state.workouts[0].notes);
 });
 
 test('now must be a finite number (a clear error, not a silent window)', () => {

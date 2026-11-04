@@ -704,3 +704,106 @@ test('every storage key still written is on the KEYS list (no new key from impor
   const { KEYS } = globalThis.HBStorage;
   for (const w of r.fs.log) assert.ok(KEYS.localStorage.includes(w.key), w.key);
 });
+
+// ---- M-A: an edit that is not saved anywhere must not be wiped by an import or a restore ----------
+async function failedSave() {
+  const r = rig();
+  const { store, doc } = await booted(r);
+  r.fake.ctl.failTransaction = quotaError(); // every IndexedDB write fails; the mirror still takes it
+  await assert.rejects(
+    store.save({ ...payload(doc), favourites: ['only in memory and the mirror'] }),
+  );
+  r.fake.ctl.failTransaction = null;
+  assert.ok(store.status().error, 'the save-problem state is up');
+  assert.ok(mirror(r.fs).includes('only in memory and the mirror'));
+  return { r, store, doc };
+}
+
+test('M-A: with a failed save outstanding every import mode and Undo refuse "unsaved"; nothing is written or locked', async () => {
+  const { r, store } = await failedSave();
+  const commits = r.fake.ctl.commits;
+  const mirrorBefore = mirror(r.fs);
+  for (const mode of ['merge', 'replace', 'plans']) {
+    await assert.rejects(store.importDoc(REAL_TEXT, { mode }), { kind: 'unsaved' });
+  }
+  await assert.rejects(store.previewImport(REAL_TEXT), { kind: 'unsaved' });
+  assert.equal(await store.importBlocked(), 'unsaved');
+  const snap = (await store.snapshots())[0];
+  await assert.rejects(store.restore(snap.id), { kind: 'unsaved' });
+  await assert.rejects(
+    store.undoImport({ snapshotId: snap.id, commitSeq: 1 }, { acceptLater: true }),
+    { kind: 'unsaved' },
+  );
+  assert.equal(r.fake.ctl.commits, commits, 'nothing written');
+  assert.equal(mirror(r.fs), mirrorBefore, 'the unsaved edit is still in the mirror');
+  assert.notEqual(store.status().state, 'readonly', 'no lock was taken');
+  // saving again succeeds, which clears the state and lets the import through
+  await store.save(payload({ ...store.loaded(), favourites: ['saved now'] }));
+  assert.equal(await store.importBlocked(), null);
+  const res = await store.importDoc(REAL_TEXT, { mode: 'merge' });
+  assert.ok(res.doc.workouts.length > OLD.workouts.length);
+});
+
+test('importBlocked reports the other refusals too, and null when an import would go ahead', async () => {
+  const r = rig();
+  const { store } = await booted(r);
+  assert.equal(await store.importBlocked(), null);
+  r.fs.setItem('hb_active_workout', '{"name":"x"}');
+  assert.equal(await store.importBlocked(), 'workout-active');
+  r.fs.removeItem('hb_active_workout');
+  const fb = rig({ fake: createFakeIDB() });
+  fb.fake.ctl.errorOpen = true;
+  const f = fb.make();
+  await f.load();
+  assert.equal(await f.importBlocked(), 'unsupported');
+  const kinds = globalThis.HBStorage.IMPORT_KINDS;
+  for (const k of [
+    'unsaved',
+    'workout-active',
+    'changed-elsewhere',
+    'changed-since',
+    'partial-replace',
+    'no-plans',
+    'unsupported',
+    'io-unavailable',
+    'io-skew',
+    'read-failed',
+    'consumed',
+  ]) {
+    assert.ok(kinds.includes(k), k);
+  }
+});
+
+test('previewImport (so "Check again") refuses while an import is being applied', async () => {
+  let ref = null;
+  let seen = null;
+  const r = rig({
+    wrapEngine(e) {
+      const read = e.readDoc;
+      e.readDoc = (...a) => {
+        if (seen === true)
+          seen = ref.previewImport(REAL_TEXT).then(
+            () => 'ok',
+            (x) => x.kind,
+          );
+        return read(...a);
+      };
+    },
+  });
+  const { store } = await booted(r);
+  ref = store;
+  seen = true;
+  await store.importDoc(REAL_TEXT, { mode: 'replace' });
+  assert.equal(await seen, 'importing');
+});
+
+test('Replace on identical data still writes and snapshots (only Merge and plans-only detect "nothing")', async () => {
+  const r = rig();
+  const { store } = await booted(r);
+  await store.importDoc(REAL_TEXT, { mode: 'replace' });
+  const commits = r.fake.ctl.commits;
+  const again = await store.importDoc(REAL_TEXT, { mode: 'replace' });
+  assert.equal(again.nothing, undefined);
+  assert.equal(r.fake.ctl.commits, commits + 1);
+  assert.ok(again.snapshotId);
+});

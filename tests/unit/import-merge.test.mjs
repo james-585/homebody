@@ -416,3 +416,16 @@ test('replace and merge into an empty store agree on order and ids after the new
   assert.ok(unique(ids(r.doc.workouts)));
   assert.deepEqual(ids(m.doc.workouts).sort(), ids(r.doc.workouts).sort());
 });
+
+test('summary says whether Merge and plans-only would add nothing; Replace never "nothing"', () => {
+  const f = FIX();
+  const same = summarize({ ...f.doc, schemaVersion: 2 }, f);
+  assert.equal(same.merge.nothing, true);
+  assert.equal(same.onlyPlans.nothing, true);
+  assert.equal(same.replace.nothing, false, 'Replace rewrites and snapshots even identical data');
+  const empty = summarize(docOf([]), f);
+  assert.equal(empty.merge.nothing, false);
+  assert.equal(empty.onlyPlans.nothing, false);
+  const profileOnly = summarize(docOf([]), valid(file({ workouts: [], profile: { name: 'A' } })));
+  assert.equal(profileOnly.merge.nothing, false, 'taking the profile is a change');
+});
