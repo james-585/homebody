@@ -134,7 +134,10 @@
     'corrupt',
     'future',
     'importing',
+    'restoring',
     'restored',
+    'stale',
+    'unavailable',
   ]);
   const IO_API_VERSION = 1; // must equal IO_API_VERSION in src/storage/validate.js (skew guard)
 
@@ -830,6 +833,7 @@
     let lastPlain = null; // { text, spliceable } of the newest provisional save, until restamped
     let idbSeqNoted = 0;
     let scheduled = false;
+    let failedSave = false; // the last save job failed or is retrying (NOT the legacy-key adoption error)
     let activeError = null; // last saveActive failure kind, null when the last write worked
     const writer = Math.random().toString(36).slice(2, 10); // per session, only tells our own retry from another tab's commit
     let resolveReady;
@@ -1502,6 +1506,7 @@
         const refused = !kind ? null : boot === 'readonly' ? readOnlyKind : kind;
         for (const w of job.waiters) refused ? w.rej(kinded(refused)) : w.res();
         inflight = false;
+        failedSave = !!kind;
         publish(kind);
         if (!kind && idbMode() && job.seq) {
           if (job.restamp) restampMirror(job);
@@ -1522,6 +1527,7 @@
       const announce = (e) => {
         if (job.announced) return;
         job.announced = true;
+        failedSave = true;
         publish(classifyError(e), 'retrying');
       };
       const first = writeOnce(job);
@@ -1763,7 +1769,7 @@
      * counter ahead of what IndexedDB committed). Replacing the stores now would wipe it from every
      * copy, so import and restore refuse ('unsaved') until a save commits. Call only when idle.
      */
-    const unsaved = () => !!error || phase === 'failed' || phase === 'retrying' || seq > committed;
+    const unsaved = () => failedSave || seq > committed;
 
     /** The lazy module, or a refusal. Never falls back to any older import path. */
     async function getIo() {

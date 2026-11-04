@@ -826,3 +826,35 @@ test('Undo with healthy saves is unaffected by the unsaved check', async () => {
   await store.undoImport({ snapshotId: res.snapshotId, commitSeq: res.seq });
   assert.equal(store.status().state, 'readonly', 'restored: reload next');
 });
+
+test('L1: a legacy-key-only user whose localStorage is full on adoption is not "unsaved" once IndexedDB commits', async () => {
+  const fs = new FakeStorage({ homebody_v1: OLD_TEXT });
+  fs.failWrites = quotaError;
+  fs.failKeys = [STORAGE_KEY]; // copying the legacy data into vaultfit_v1 fails
+  const r = rig({ fs });
+  const { store } = await booted(r);
+  assert.equal(
+    idbWorkouts(r.fake).length,
+    OLD.workouts.length,
+    'IndexedDB committed the migration',
+  );
+  assert.ok(store.status().error, 'the adoption failure is still reported');
+  assert.equal(await store.importBlocked(), null, 'but nothing is unsaved');
+  fs.failWrites = null;
+  const res = await store.importDoc(REAL_TEXT, { mode: 'merge' });
+  assert.ok(res.doc.workouts.length > OLD.workouts.length);
+});
+
+test('L3: every refusal kind the store code can give is listed in IMPORT_KINDS', () => {
+  const src = readFileSync(new URL('../../src/hb-storage.js', import.meta.url), 'utf8');
+  const kinds = new Set(globalThis.HBStorage.IMPORT_KINDS);
+  const thrown = [...src.matchAll(/kinded\('([a-z-]+)'\)/g)].map((m) => m[1]);
+  const locked = [...src.matchAll(/(?:lock\(|readOnlyKind = )'([a-z-]+)'/g)].map((m) => m[1]);
+  // 'empty' is snapshot() (not import); 'unknown' is the generic save failure
+  for (const k of new Set([...thrown, ...locked])) {
+    if (k === 'empty' || k === 'unknown') continue;
+    assert.ok(kinds.has(k), `${k} is thrown or returned but missing from IMPORT_KINDS`);
+  }
+  for (const k of ['restoring', 'stale', 'unavailable', 'restored', 'importing'])
+    assert.ok(kinds.has(k), k);
+});
