@@ -1,6 +1,6 @@
 # Import preview, confirm, Undo and export labelling (T7b)
 
-Status: **Approved by james585 on 2026-11-04, in chat.** Answers: Q1 the too-large backup saves the full export as `HomeBody_full_<YYYY-MM-DD>.txt`, labelled not importable today; Q2 the save bar's `Export` reads `Export this session` in states 6 to 8 (K30; amends write-failure-banner.md, see its dated amendment); Q3 Undo lasts until reload; Q4 the user taps Restart after Undo, no automatic reload; Q5 the import sheet and dialogs sit at z 9800, above the FAB; Q6 plans-only imports also get Undo; Q7 problem lists show positions only, never values. Author: product-designer, 2026-11-03. Branch `claude/t7-import-preview-spec`.
+Status: **Approved by james585 on 2026-11-04, in chat.** Answers: Q1 the too-large backup saves the full export as `HomeBody_full_<YYYY-MM-DD>.txt`, labelled not importable today; Q2 the save bar's `Export` reads `Export this session` in states 6 to 8 (K30; amends write-failure-banner.md, see its dated amendment); Q3 Undo lasts until reload; Q4 the user taps Restart after Undo, no automatic reload; Q5 the import sheet and dialogs sit at z 9800, above the FAB; Q6 plans-only imports also get Undo; Q7 problem lists show positions only, never values. **Exception: section 12 (Addendum 2026-11-04: refusal R5 and the T7b handoff rules, including their rows marked Draft in 4.11, 6.5, 9 and 10) is Draft - needs James's approval.** Author: product-designer, 2026-11-03. Branch `claude/t7-import-preview-spec`.
 Plan: docs/plans/m1/T7.md (approved 2026-11-03). Related: docs/design/write-failure-banner.md (approved; bar patterns, live regions, push rule), docs/design/update-notice.md (update card), docs/design/design-system.md and tokens.json on `claude/design-system-m2` (proposal; tokens, components, z-scale), docs/security.md.
 Principles: 1 (Merge default, Replace explicit, snapshot, Undo), 2 (calm, plain, no claims), 4 (exports are labelled as health data), 5 (works offline; nothing interrupts a workout), 7 (the logging path is not touched), 8 (imported text is data: text nodes only).
 
@@ -138,8 +138,8 @@ Sheet frame (all states):
 ### State map
 ```
 tap Import backup
-  -> pre-checks (sync, before the picker): workout active? read-only? fallback? not loaded?
-       any fails -> sheet opens at R1..R4 (no picker)
+  -> pre-checks (sync, before the picker): workout active? read-only? fallback? not loaded? unsaved?
+       any fails -> sheet opens at R1..R5 (no picker)
   -> file picker (cancel -> nothing happens, no sheet)
   -> I2 Checking file  (module load, size, read, parse, validate)
        fails -> F1..F8 / M1, M2
@@ -147,7 +147,7 @@ tap Import backup
        <-> I4 Preview, Replace selected
   -> Import (Merge)        -> I6 Importing -> I7 Done (Undo)
   -> Replace my data...    -> I5 Replace dialog -> I6 -> I7
-       I6 fails -> R1..R4 (re-checked at apply), C1 changed in another tab, W1 not saved
+       I6 fails -> R1..R5 (re-checked at apply), C1 changed in another tab, W1 not saved
 I7 / card Undo row -> U1 confirm or U2 warning -> U3 Undoing -> U4 Restart
                                                        fails -> UF1..UF4
 ```
@@ -436,6 +436,7 @@ Each is a state of the same sheet: a marker + title + body, then the footer. Unl
 | R2b | store read-only: `restoring` or `importing` (restart pending, or another import in this tab) | at tap, or at apply | `io.r.restart.title` | `io.r.restart` | Close |
 | R3 | localStorage fallback engine | at tap, or at apply | `io.r.fallback.title` | `io.r.fallback` | Close |
 | R4 | not loaded yet (`hbLoadedOk` false) | at tap, or at apply | `io.r.loading.title` | `io.r.loading` | Close |
+| R5 *(Draft, section 12)* | kind `unsaved`: a save has failed or is retrying, or the plain copy is ahead of the last committed save | at tap (both import buttons), or at apply | `io.r.unsaved.title` | `io.r.unsaved` or `io.r.unsavedNoBar` | Close, Export backup (primary) |
 | M1 | module failed to load (offline and not cached, or network) | in I2 | `io.m.load.title` | `io.m.load` | Close, Reload |
 | M2 | version skew (`IO_API_VERSION` or `LATEST_SCHEMA` mismatch) | in I2 | `io.m.skew.title` | `io.m.skew` | Close, Reload |
 | F1 | file over 20 MB (size or text length) | in I2, before reading if `file.size` | `io.f.big.title` | `io.f.big` | Close |
@@ -702,6 +703,11 @@ The validator returns at most 20 problems. If 20 are shown, add `io.list.first20
 | `io.r.fallback` | `HomeBody's main storage didn't open this time, so it's running in a limited mode that can't import safely. Nothing was changed. Close and reopen HomeBody, then try again.` |
 | `io.r.loading.title` | `Still starting up` |
 | `io.r.loading` | `HomeBody is still loading your data. Wait a moment, then try again. Nothing was changed.` |
+| `io.r.unsaved.title` *(Draft, 12)* | `Not saved yet` |
+| `io.r.unsaved` *(Draft, 12)* | `Your latest changes aren't saved yet, and importing now could lose them. Tap Retry on the message at the top, or export a backup to keep a copy. When it says Saved, try again. Nothing was changed.` |
+| `io.r.unsavedNoBar` *(Draft, 12)* | `Your latest changes aren't saved yet, and importing now could lose them. Export a backup to keep a copy, then close and reopen HomeBody so it can finish saving, and try again. Nothing was changed.` |
+| `io.r.unsaved.nowSaved` *(Draft, 12)* | `Saved. Close this and choose your file again.` |
+| `io.enum.unknown` *(Draft, 12)* | `a setting HomeBody doesn't recognise` |
 | `io.m.load.title` | `Import isn't available right now` |
 | `io.m.load` | `Part of HomeBody didn't load. Reload HomeBody, then try again. Nothing was changed.` |
 | `io.m.loadExport` | `Part of HomeBody didn't load, so it can't make a backup. Reload HomeBody, then try again. Nothing was changed.` |
@@ -898,6 +904,8 @@ Layout, a11y, motion, workout
 - A30 Contrast: computed colours of title, body, buttons, markers, radio edges and the danger confirm meet 7.6 in both themes.
 - A31 Logging a set in the workout layer still takes the same taps as before (existing tap-count check passes unchanged); the goldens, `offline`, `update` and `idb` specs pass unchanged.
 - A33 Too-large export (stub `buildExport`'s size check to refuse): the 5.4 sheet shows `io.xc.title` and `io.xc.body`, nothing downloads until `Save as text file` is tapped; then exactly one `text/plain` download named `^HomeBody_full_\d{4}-\d{2}-\d{2}\.txt$` whose content parses to the full in-memory export (not the `vaultfit_v1` text), and the toast reads `io.xc.toastSaved`.
+- A34 *(Draft, section 12)* R5: with the IndexedDB save faulted so the save bar shows state 2, tap Import backup and Import plans only: R5 opens with `io.r.unsaved.title` and `io.r.unsaved`, no `filechooser` event fires, and the store is unchanged. With the same fault injected between preview and Import: R5 shows at apply, nothing is imported, and the in-memory edit is still present (deep-equal) and is saved by a later successful Retry. While R5 is open, a real-touch tap on the bar's Retry hits it (the bar is neither under the scrim nor `inert`); after bar state 4 (Saved) the sheet shows `io.r.unsaved.nowSaved` and `#hb-io-status` announced it once. `Export backup` in R5 downloads a file that contains the unsaved edit. With the mirror counter seeded ahead of the committed one and no bar showing, R5 uses `io.r.unsavedNoBar`. The sheet contains no Retry button and no `role="alert"`.
+- A35 *(Draft, section 12)* Handoff rules: (a) a Merge that adds nothing (`nothing: true`) leaves `state.*` identical (same object identity) and shows `io.sum.mergeNothing`; (b) in I6 no Check again control exists and Escape, scrim and Close do nothing; (c) a profile with `goal: "constructor"`, `sex: "hidden"` or `activity: "__proto__"` and a plan with `level: "active"` import with warnings, render `io.enum.unknown` where a label would show, and add no class, id or attribute containing the raw token anywhere in the DOM.
 - A32 Offline (context offline after first load, modules precached): the full import, Undo and export flows work.
 
 ---
@@ -907,6 +915,12 @@ Layout, a11y, motion, workout
 - `summarize` must provide, as numbers or validated dates: per-category in-file, new, present and (Replace) removed counts; first and last workout date; `_exported`; re-id'd count; in-file duplicate count; dropped count; future-date count; `partial`; mirror-ceiling flag; profile case (one of the six in 4.3.3) and the incoming profile name; plan list (name, day count, present flag) for plans-only. If any of these is missing, stop and report rather than computing it in the UI from `state.*`.
 - Dictionary entries (personal records, progression log) must come back from the validator with a position, not the key, in `where`. If `where` contains a key or value, that is a security finding: stop and report.
 - The file text is held only while the sheet is open (for Check again and Try again) and is dropped on close.
+- *(Draft, section 12; from the T7a security review)* **Apply stays modal; state is replaced in the same `.then`.** From the Import (or Add plans) tap until `state.*` has been replaced, the sheet stays in I6 (no Close, Escape or scrim; `.app` inert), and `state.*` is replaced in the same `.then` as the `importDoc` result, before any other tap is handled. Saves refused by the `importing` lock in that window are silent (no bar, no toast); that is expected and is only safe because nothing else can be tapped.
+- *(Draft, 12)* **`nothing: true`.** Check `r.nothing` first. When it is true, do **not** replace `state.*` from `r.doc` (it is the IndexedDB read, not an import result); show the "nothing to add" outcome.
+- *(Draft, 12)* **`Check again` is unavailable while applying.** In I6 it is not rendered; in C1 it is busy (`aria-disabled`, label unchanged) from its tap until the new preview shows, so a double tap cannot start two previews or an apply.
+- *(Draft, 12)* **"Nothing to add" comes from `summarize`.** `summarize` exposes a boolean for "Merge adds nothing"; `io.sum.mergeNothing` and `io.plan.allPresent` are chosen from that boolean only, never by adding up counts in the UI.
+- *(Draft, 12)* **Unrecognised setting values.** Unrecognised enum tokens (profile `goal`, `sex`, `activity`; plan `goal` and `level`) arrive as warnings, not refusals. They are never displayed raw: a label comes from a fixed lookup table checked with `Object.hasOwn(table, token)` (so `constructor`, `__proto__`, `toString` never match inherited properties), and an unknown token shows `io.enum.unknown` through `textContent`. A token is never used as a class name, id or attribute; where a class is derived from a known token it is namespaced and taken from the table's own value (`hb-goal-<value>`), never from the raw token, so tokens such as `hidden` or `active` cannot hit existing classes. No new preview warning line is added for these.
+- *(Draft, 12)* **R5 kind `unsaved`.** The synchronous pre-check reads the store status: `failed` or `retrying`, or the mirror counter ahead of the committed counter, maps to R5. The same kind from `previewImport` or `importDoc` maps to R5 too. Choose `io.r.unsaved` when the save bar is showing, otherwise `io.r.unsavedNoBar`.
 - The shipped overwrite box text ("This will overwrite all current data ... This cannot be undone.") is wrong after T7 (Merge is default; Undo exists) and must not survive anywhere.
 
 ---
@@ -920,6 +934,56 @@ Layout, a11y, motion, workout
 5. **Layer:** the import sheet and its dialogs are at z 9800 (`--z-dialog`), above the FAB (section 8).
 6. **Plans-only:** gets the same Undo (4.10).
 7. **Problem lists:** positions only, never values, for import and export (6.4).
+
+## 12. Addendum 2026-11-04: refusal R5 "Not saved yet" and T7b handoff rules
+
+Status: **Draft - needs James's approval.** The rest of this spec stays approved. Source: the T7a security review (approach approved by James on 2026-11-04): `importDoc` and `previewImport` refuse with kind `unsaved` when the store has a failed save (status `failed` or `retrying`, or the mirror counter is ahead of the committed one), because a Merge import builds on the last committed data and would wipe an edit that so far exists only in memory and in the plain copy (principle 1).
+
+### 12.1 R5 Not saved yet
+- **When:** at the Import backup or Import plans only tap, before the file picker opens (with R1 to R4; the picker never opens), and at apply if it appears then (I6 to R5; nothing imported; the file text is dropped).
+- **No second save-problem UI.** R5 does not offer Retry itself. It points to the approved save-problem bar (write-failure-banner.md) and uses its words: not saved, Retry, Export, Saved. The bar is at z 10000, outside `.app`, and pushes the sheet down, so it stays visible and tappable above R5's scrim. `inert` goes on `.app` only, never on `#hb-save`.
+- **Copy:** title `io.r.unsaved.title`. Body `io.r.unsaved` when the save bar is showing (states 1 to 3b; state 5 cannot occur because import is refused during a workout), or `io.r.unsavedNoBar` when the kind is `unsaved` but no bar is showing (the plain copy is ahead with no failed save this session). Marker: circle `!` in `--danger`, as in the bar, because data is at risk.
+- **Actions:** footer left `Close` (secondary), right `Export backup` (primary, `io.btn.export`). Export runs E1 unchanged; the backup includes the unsaved in-memory edit, which is what protects it. R5 stays open and E1's toast confirms; an export warning or refusal replaces R5 with 5.2 or 5.4 as usual. No Retry button in the sheet.
+- **When the bar reaches Saved** while R5 is open, the body gains the line `io.r.unsaved.nowSaved` (`--text`, no marker), announced once through `#hb-io-status`; focus does not move. The user closes and taps Import again (a fresh tap gives the picker its permission).
+- **Accessibility:** as every refusal: focus to the title on open, `aria-describedby` = the body, Escape and scrim = Close, focus returns to the opener. No `role="alert"`: the bar has already alerted once for this episode and R5 must not alert again. Tab order follows 7.1: body, footer Close, Export backup, then the header Close. While `aria-modal` is set a screen-reader user cannot move to the bar, so the body names it ("the message at the top") and `Export backup` is the way to protect the data from inside the dialog; after closing R5, the bar's Retry is the next region in reading order. 48 px buttons; at 200% text the footer stacks with Export backup at the bottom.
+- **Light and dark, accent:** tokens as in 7.6 and 7.7; nothing new.
+
+375 x 667, dark, save bar in state 2 above the sheet:
+```
++---------------------------------------------+  save bar (z 10000), unchanged
+| (!) Not saved. Keep HomeBody open.          |
+|     Something stopped HomeBody saving...    |
+| [      RETRY      ]  [      EXPORT      ]   |
++=============================================+
+| ...scrim...                                 |
++---------------------------------------------+  import sheet, pushed below the bar
+| (!) Not saved yet                 [ CLOSE ] |
+|                                             |
+| Your latest changes aren't saved yet, and   |
+| importing now could lose them. Tap Retry on |
+| the message at the top, or export a backup  |
+| to keep a copy. When it says Saved, try     |
+| again. Nothing was changed.                 |
+|                                             |
+| (after Saved:) Saved. Close this and choose |
+| your file again.                            |
++---------------------------------------------+
+| [   CLOSE   ]        [  EXPORT BACKUP  ]    |
++---------------------------------------------+
+```
+
+### 12.2 Copy added
+`io.r.unsaved.title`, `io.r.unsaved`, `io.r.unsavedNoBar`, `io.r.unsaved.nowSaved` and `io.enum.unknown`, all in section 6.5.
+
+### 12.3 Handoff rules (engineering contract)
+In section 10, marked Draft: apply stays modal and `state.*` is replaced in the same `.then` (refused saves during import are silent); check `r.nothing` and never replace state from `r.doc` when it is true; `Check again` unavailable while applying; `summarize` exposes the "Merge adds nothing" boolean used for `io.sum.mergeNothing` and `io.plan.allPresent`; unrecognised enum tokens render only through own-property lookup tables and text nodes, never as un-namespaced class names.
+
+### 12.4 Checks
+A34 and A35 (section 9).
+
+### 12.5 Questions for James (recommendation first)
+1. **Approve R5 as written:** it points to the bar's Retry, offers Export backup, and has no Retry of its own. Alternative: a `Retry` button in the sheet calling the same retry as the bar (two controls for one action; not recommended).
+2. **Should Undo also refuse on `unsaved`?** `restore` replaces the whole document, so an unsaved in-memory edit would be lost the same way. Recommend: yes, with the same pattern (title `Not saved yet`, body as `io.r.unsaved` with "undoing" in place of "importing"); storage-sync-engineer would add the check to `restore`, which is outside this addendum until approved.
 
 ## Approval
 Approved by james585 on 2026-11-04, in chat (answers in section 11).
