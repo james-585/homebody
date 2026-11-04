@@ -1,6 +1,6 @@
 # Import preview, confirm, Undo and export labelling (T7b)
 
-Status: **Approved by james585 on 2026-11-04, in chat.** Answers: Q1 the too-large backup saves the full export as `HomeBody_full_<YYYY-MM-DD>.txt`, labelled not importable today; Q2 the save bar's `Export` reads `Export this session` in states 6 to 8 (K30; amends write-failure-banner.md, see its dated amendment); Q3 Undo lasts until reload; Q4 the user taps Restart after Undo, no automatic reload; Q5 the import sheet and dialogs sit at z 9800, above the FAB; Q6 plans-only imports also get Undo; Q7 problem lists show positions only, never values. Section 12 (Addendum: refusal R5 "Not saved yet", the matching Undo refusal UF5 and the T7b handoff rules) approved by james585 on 2026-11-04, in chat: R5 as written, and Undo also refuses when changes are not saved. Author: product-designer, 2026-11-03. Branch `claude/t7-import-preview-spec`.
+Status: **Approved by james585 on 2026-11-04, in chat.** Answers: Q1 the too-large backup saves the full export as `HomeBody_full_<YYYY-MM-DD>.txt`, labelled not importable today; Q2 the save bar's `Export` reads `Export this session` in states 6 to 8 (K30; amends write-failure-banner.md, see its dated amendment); Q3 Undo lasts until reload; Q4 the user taps Restart after Undo, no automatic reload; Q5 the import sheet and dialogs sit at z 9800, above the FAB; Q6 plans-only imports also get Undo; Q7 problem lists show positions only, never values. Section 12 (Addendum: refusal R5 "Not saved yet", the matching Undo refusal UF5 and the T7b handoff rules) approved by james585 on 2026-11-04, in chat: R5 as written, and Undo also refuses when changes are not saved. Kind mapping additions (R2 `stale`, R2b `restored`, UF2b, F9, their copy and check A37) and the rule that hides the save bar for the `restored`, `restoring` and `importing` read-only states (10.2, A38) approved by james585 on 2026-11-04, in chat. Author: product-designer, 2026-11-03. Branch `claude/t7-import-preview-spec`.
 Plan: docs/plans/m1/T7.md (approved 2026-11-03). Related: docs/design/write-failure-banner.md (approved; bar patterns, live regions, push rule), docs/design/update-notice.md (update card), docs/design/design-system.md and tokens.json on `claude/design-system-m2` (proposal; tokens, components, z-scale), docs/security.md.
 Principles: 1 (Merge default, Replace explicit, snapshot, Undo), 2 (calm, plain, no claims), 4 (exports are labelled as health data), 5 (works offline; nothing interrupts a workout), 7 (the logging path is not touched), 8 (imported text is data: text nodes only).
 
@@ -390,7 +390,8 @@ Undo failures:
 | State | When | Title | Body | Buttons |
 | --- | --- | --- | --- | --- |
 | UF1 | workout active | `io.r.workout.title` | `io.uf.workout` | Close |
-| UF2 | read-only | `io.uf.readonly.title` | `io.uf.readonly` | Close |
+| UF2 | read-only: `corrupt`, `future`, `unavailable`, `stale` | `io.uf.readonly.title` | `io.uf.readonly` | Close |
+| UF2b | read-only: `restoring`, `importing`, `restored` (restart pending) | `io.r.restart.title` | `io.uf.restart` | Close |
 | UF3 | restore failed (write) | `io.uf.failed.title` | `io.uf.failed` | Close, Try again |
 | UF4 | snapshot gone | `io.uf.gone.title` | `io.uf.gone` | Close |
 | UF5 | changes not saved (kind `unsaved`), at tap or from `restore` | `io.r.unsaved.title` | `io.uf.unsaved` (bar showing) or `io.uf.unsavedNoBar` | Close, Export backup (primary) |
@@ -434,8 +435,8 @@ Each is a state of the same sheet: a marker + title + body, then the footer. Unl
 | ID | Cause (plan / reason) | Shown | Title key | Body key | Footer |
 | --- | --- | --- | --- | --- | --- |
 | R1 | active workout (`hbWorkoutActive()`; also at apply) | at tap, or at apply | `io.r.workout.title` | `io.r.workout` | Close |
-| R2 | store read-only: `corrupt`, `future`, `unavailable` | at tap, or at apply | `io.r.readonly.title` | `io.r.readonly` | Close |
-| R2b | store read-only: `restoring` or `importing` (restart pending, or another import in this tab) | at tap, or at apply | `io.r.restart.title` | `io.r.restart` | Close |
+| R2 | store read-only: `corrupt`, `future`, `unavailable`, and `stale` (a quick start showed older data, so saving is paused; the bar shows state 8) | at tap, or at apply | `io.r.readonly.title` | `io.r.readonly` | Close |
+| R2b | store read-only: `restoring` or `importing` (restart pending, or another import in this tab), and `restored` (an Undo or restore has finished and the app has not restarted yet) | at tap, or at apply | `io.r.restart.title` | `io.r.restart` | Close |
 | R3 | localStorage fallback engine | at tap, or at apply | `io.r.fallback.title` | `io.r.fallback` | Close |
 | R4 | not loaded yet (`hbLoadedOk` false) | at tap, or at apply | `io.r.loading.title` | `io.r.loading` | Close |
 | R5 *(section 12)* | kind `unsaved`: a save has failed or is retrying, or the plain copy is ahead of the last committed save | at tap (both import buttons), or at apply | `io.r.unsaved.title` | `io.r.unsaved` or `io.r.unsavedNoBar` | Close, Export backup (primary) |
@@ -453,6 +454,7 @@ Each is a state of the same sheet: a marker + title + body, then the footer. Unl
 | W1 | write failed: out of space | at apply | `io.w.title` | `io.w.quota` | Close, Try again (primary) |
 | W2 | write failed: other | at apply | `io.w.title` | `io.w.other` | Close, Try again (primary) |
 | P0 | plans-only: no plans in the file | in I2 | `io.plan.none.title` | `io.plan.none` | Close |
+| F9 | kind `consumed`: the held file text is gone (the sheet was closed, or the file was already applied) when Check again, Try again or Import runs | at recheck or apply | `io.f.again.title` | `io.f.again` | Close |
 
 Notes:
 - **Diamond, not circle,** for R2b, R4, M2 (nothing is wrong with the user's data or file; a restart or wait fixes it).
@@ -726,6 +728,8 @@ The validator returns at most 20 problems. If 20 are shown, add `io.list.first20
 | `io.f.invalid.title` | `This file can't be imported` |
 | `io.f.invalid` | `HomeBody checked it and found entries it can't accept, so nothing was imported. Your data is unchanged. If you made this file with HomeBody, export a fresh backup and try again.` |
 | `io.f.ids` | `Some workouts in this file can't be renumbered to fit with yours, so nothing was imported. Your data is unchanged.` |
+| `io.f.again.title` | `Choose the file again` |
+| `io.f.again` | `HomeBody no longer has this file open. Close this and choose it again. Nothing was changed.` |
 | `io.f.read.title` | `Couldn't open the file` |
 | `io.f.read` | `Your browser couldn't read this file. Try choosing it again. Nothing was changed.` |
 | `io.chg.title` | `HomeBody changed in another tab` |
@@ -764,6 +768,7 @@ The validator returns at most 20 problems. If 20 are shown, add `io.list.first20
 | `io.undone.body` | `Your data is back to how it was before the import. Restart HomeBody to finish.` |
 | `io.uf.workout` | `You can't undo an import while a workout is in progress. Finish or cancel it, then try again. Nothing was changed.` |
 | `io.uf.readonly.title` | `Can't undo right now` |
+| `io.uf.restart` | `HomeBody needs to restart before it can undo. Close and reopen it, then try again. Nothing was changed.` |
 | `io.uf.readonly` | `HomeBody isn't saving right now (see the message at the top), so it can't undo. Nothing was changed.` |
 | `io.uf.failed.title` | `Undo didn't finish` |
 | `io.uf.failed` | `Something stopped HomeBody undoing the import. Nothing was changed: the import is still in place.` |
@@ -912,6 +917,8 @@ Layout, a11y, motion, workout
 - A34 *(section 12)* R5: with the IndexedDB save faulted so the save bar shows state 2, tap Import backup and Import plans only: R5 opens with `io.r.unsaved.title` and `io.r.unsaved`, no `filechooser` event fires, and the store is unchanged. With the same fault injected between preview and Import: R5 shows at apply, nothing is imported, and the in-memory edit is still present (deep-equal) and is saved by a later successful Retry. While R5 is open, a real-touch tap on the bar's Retry hits it (the bar is neither under the scrim nor `inert`); after bar state 4 (Saved) the sheet shows `io.r.unsaved.nowSaved` and `#hb-io-status` announced it once. `Export backup` in R5 downloads a file that contains the unsaved edit. With the mirror counter seeded ahead of the committed one and no bar showing, R5 uses `io.r.unsavedNoBar`. The sheet contains no Retry button and no `role="alert"`.
 - A35 *(section 12)* Handoff rules: (a) a Merge that adds nothing (`nothing: true`) leaves `state.*` identical (same object identity) and shows `io.sum.mergeNothing`; (b) in I6 no Check again control exists and Escape, scrim and Close do nothing; (c) a profile with `goal: "constructor"`, `sex: "hidden"` or `activity: "__proto__"` and a plan with `level: "active"` import with warnings, render `io.enum.unknown` where a label would show, and add no class, id or attribute containing the raw token anywhere in the DOM.
 - A36 *(section 12)* UF5: after a successful import, fault the IndexedDB save so the bar shows state 2, then tap Undo import (in I7 and in the card row): UF5 opens with `io.r.unsaved.title` and `io.uf.unsaved`, **U1 and U2 never open**, and the store and in-memory state are unchanged. With `restore` stubbed to refuse with kind `unsaved` after U1 is confirmed: UF5 shows, nothing is undone, the Undo row stays. With no bar showing and the mirror counter ahead: `io.uf.unsavedNoBar`. After bar state 4 the sheet shows `io.uf.unsaved.nowSaved`. No Retry button and no `role="alert"` in the sheet.
+- A37 Kind mapping is complete: a unit test iterates `HBStorage.IMPORT_KINDS`, the store's read-only kinds (`corrupt`, `future`, `unavailable`, `stale`, `restoring`, `importing`, `restored`) and `validate.js` `REASONS`, and asserts each has exactly one row in the 10.1 table and that every copy key in that row exists in the copy table; an unknown kind fails the test. e2e: (a) with the store locked as `restored` (Undo finished, before Restart; U4 cannot be closed, so drive the pre-check function directly) the import pre-check maps to R2b; (b) seeded `stale` boot shows R2 for Import and UF2 for Undo; (c) Check again after `dispose()` shows F9; (d) `restore` stubbed to throw `restored` shows UF2b.
+- A38 Save bar hidden for deliberate locks (10.2): (a) after Undo reaches U4 (store kind `restored`), `#hb-save` is not displayed, `html.hb-save-on` is absent, `--hb-bar-h` is `0px`, the bar's alert and status regions were never written, and focus is on the U4 title; (b) with `writeDoc` held open during I6 (kind `importing`) and during U3 (kind `restoring`), the same holds and the sheet's top does not move (bounding box unchanged within 1 px); (c) control: seeded `corrupt`, `future`, `unavailable` and `stale` still show bar states 6, 7, 8, 8 with the alert written once; (d) an import whose write finds newer data (store locks `future`) shows bar state 7 and the sheet R2.
 - A32 Offline (context offline after first load, modules precached): the full import, Undo and export flows work.
 
 ---
@@ -927,6 +934,53 @@ Layout, a11y, motion, workout
 - *(Section 12)* **"Nothing to add" comes from `summarize`.** `summarize` exposes a boolean for "Merge adds nothing"; `io.sum.mergeNothing` and `io.plan.allPresent` are chosen from that boolean only, never by adding up counts in the UI.
 - *(Section 12)* **Unrecognised setting values.** Unrecognised enum tokens (profile `goal`, `sex`, `activity`; plan `goal` and `level`) arrive as warnings, not refusals. They are never displayed raw: a label comes from a fixed lookup table checked with `Object.hasOwn(table, token)` (so `constructor`, `__proto__`, `toString` never match inherited properties), and an unknown token shows `io.enum.unknown` through `textContent`. A token is never used as a class name, id or attribute; where a class is derived from a known token it is namespaced and taken from the table's own value (`hb-goal-<value>`), never from the raw token, so tokens such as `hidden` or `active` cannot hit existing classes. No new preview warning line is added for these.
 - *(Section 12)* **R5 kind `unsaved`.** The synchronous pre-check reads the store status: `failed` or `retrying`, or the mirror counter ahead of the committed counter, maps to R5. The same kind from `previewImport` or `importDoc` maps to R5 too. Choose `io.r.unsaved` when the save bar is showing, otherwise `io.r.unsavedNoBar`.
+- **Kind to state (10.1).** T7b asserts this table is complete (A37).
+
+#### 10.1 Kind to state
+Sources: `HBStorage.IMPORT_KINDS` and the store's read-only kinds in `src/hb-storage.js` (~114-138 on `claude/m1-t7-import`), and `REASONS` in `src/storage/validate.js`. "Import" means `importBlocked`, `previewImport`, `importDoc` or `HB.io`; "Undo" means `checkUndo` or `undoImport`.
+
+| Kind (and reason) | Import state | Undo state | Notes |
+| --- | --- | --- | --- |
+| `workout-active` | R1 | UF1 | |
+| `corrupt`, `future`, `unavailable` (read-only) | R2 | UF2 | the save bar shows states 6, 7, 8 |
+| `stale` (read-only) | R2 | UF2 | the bar shows state 8 |
+| `restoring`, `importing` (read-only) | R2b | UF2b | |
+| `restored` (read-only) | R2b | UF2b | after a finished Undo the Undo row is gone; this covers another path reaching the store before Restart |
+| `unsupported` (localStorage fallback engine) | R3 | UF2 | |
+| `not-loaded` | R4 | UF2 | |
+| `unsaved` | R5 | UF5 | |
+| `io-unavailable` | M1 (export: XM1) | M1 | |
+| `io-skew` | M2 (export: XM2) | M2 | |
+| `read-failed` | F8 | n/a | |
+| `consumed` | F9 | n/a | |
+| `invalid` + `too-large` | F1 | n/a | `{size}` from `file.size` |
+| `invalid` + `empty`, `not-json`, `not-text`, `bad-version`, `migration-failed` | F2 (F5 for `bad-version`, same copy) | n/a | |
+| `invalid` + `not-homebody`, `missing-workouts` | F3 | n/a | |
+| `invalid` + `newer-version` | F4 | n/a | |
+| `invalid` + `missing-field`, `bad-type`, `out-of-range`, `too-long`, `too-many`, `bad-chars`, `bad-key`, `bad-enum`, `bad-date` | F6 (list, reasons per 6.4) | n/a | |
+| `invalid` + `id-space` | F7 | n/a | |
+| `no-plans` | P0 | n/a | |
+| `partial-replace` | stays in I4: Replace shown unavailable with `io.opt.replacePartial`, announced through `#hb-io-status` | n/a | the UI prevents it; this is the backstop |
+| `changed-elsewhere` | C1 | n/a | |
+| `changed-since` | n/a | U2 (shown again, then the user decides) | race between `checkUndo` and `undoImport` |
+| `not-found` | n/a | UF4 | |
+| `bad-mode` | W2 | n/a | a programming error; never expected; test that the UI only passes `merge`, `replace`, `plans` |
+| no kind, quota error (write) | W1 | UF3 | |
+| no kind, any other error | W2 | UF3 | |
+| `restore` migration reason (from `runMigrations`) | n/a | UF3 | |
+
+Engineering notes (not copy):
+- **Pre-picker check reads `HB.storage.status()` synchronously.** `importBlocked()` is asynchronous (it awaits `usable()` and `settled()`). The file picker must open inside the tap handler, so the **pre-picker gate is a synchronous read of `HB.storage.status()`** (read-only kind, fallback, loaded, unsaved) and `hbWorkoutActive()`; `importBlocked()` then runs after the file is chosen, and `importDoc` checks again at apply. Do not `await importBlocked()` before `input.click()`.
+- After a successful Undo the store locks with `restored`; without 10.2 the bar would show state 8 "Saving is not working" above U4 "Import undone". 10.2 prevents that.
+
+#### 10.2 Save bar hidden for the deliberate locks (James, 2026-11-04)
+- **Condition, exactly:** the save-problem bar does not render a read-only state (6, 7 or 8) when the store's read-only kind is `restored`, `restoring` or `importing`. These locks are deliberate and the import sheet explains them (I6, U3, U4, R2b, UF2b). Test the kind itself, not the published bar state (the store maps every unknown kind to `unavailable`), for example `status().readOnlyKind` or a `deliberate: true` flag published with it.
+- **Every other read-only kind still shows the bar:** `corrupt` (state 6), `future` (state 7), `unavailable` and `stale` (state 8), including when an import or restore ends by locking with one of them (the store locks with `future` or `corrupt` if it finds such data in the write); the sheet then shows R2 or UF2, whose copy points to "the message at the top".
+- **Not-saved states 1 to 3b and 5 are unaffected.** They cannot start inside these locks (saves refused by the lock are silent, section 10 above), and an import or Undo cannot start while one shows (R5, UF5). If one is already on screen when a lock begins (a failure that publishes in the same frame), it stays; the hide rule never removes a showing bar.
+- **Nothing is announced and nothing moves:** while hidden for these kinds the bar's `role="alert"` and `role="status"` regions are not written, `html.hb-save-on` is not set and `--hb-bar-h` stays `0px`, so the sheet does not jump. The bar never takes focus in any case; focus stays on the sheet title (I6, U3, U4) as specified in 7.1.
+- **After the lock:** `importing` is released when `state.*` has been replaced (success) or on failure; nothing is shown for it. `restored` lasts until Restart; the reload starts a normal session. `restoring` either becomes `restored` or is released on failure (UF3).
+- Scope: a one-condition change in the bar code; recorded as an amendment in write-failure-banner.md (2026-11-04).
+
 - The shipped overwrite box text ("This will overwrite all current data ... This cannot be undone.") is wrong after T7 (Merge is default; Undo exists) and must not survive anywhere.
 
 ---
@@ -996,6 +1050,13 @@ A34, A35 and A36 (section 9).
 - **Copy:** title `io.r.unsaved.title` (`Not saved yet`); body `io.uf.unsaved` when the save bar is showing, otherwise `io.uf.unsavedNoBar`; after the bar reaches Saved, the added line `io.uf.unsaved.nowSaved` (section 6.7).
 - **Actions, a11y, layering, light and dark:** exactly as R5 (12.1): footer `Close` (left) and `Export backup` (primary, right); circle `!` in `--danger`; focus to the title; Escape and scrim = Close; focus returns to the Undo button; no `role="alert"`; the bar stays above and tappable. The wireframe is R5's with the UF5 body.
 - **Engineering:** storage-sync-engineer adds the `unsaved` check to `restore` (refuse with kind `unsaved`, nothing written), alongside the existing workout and read-only checks. Check: A36.
+
+### 12.7 Kind mapping additions (2026-11-04; approved by james585 on 2026-11-04, in chat)
+From the T7a security re-check (L3): the store can return kinds this spec did not name. Mapped in 10.1, keeping to existing states and copy where possible: `stale` joins R2 / UF2, `restored` joins R2b; new are UF2b (Undo while a restart is pending; copy `io.uf.restart`) and F9 (`consumed`: copy `io.f.again.title`, `io.f.again`). Check: A37.
+
+Decisions (James, 2026-11-04, in chat):
+1. **UF2b and F9 approved** with their copy, and the 10.1 table with A37.
+2. **The save bar is hidden for the read-only kinds `restored`, `restoring` and `importing`**; every other read-only kind still shows it. Contract in 10.2, check A38, amendment in write-failure-banner.md.
 
 ## Approval
 Approved by james585 on 2026-11-04, in chat (answers in section 11).
