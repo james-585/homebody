@@ -6018,6 +6018,49 @@ function mConfirmImport() {
   mShowPage('profile');
 }
 
+// Plan files are data: every field is coerced to the type the renderers expect before it
+// reaches state (strings are still escaped at render time; numbers and ids never are).
+function mNormalisePlan(p, id) {
+  const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+  if (!isObj(p)) return null;
+  const str = (v, max) => (typeof v === 'string' || typeof v === 'number') ? String(v).slice(0, max) : '';
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v)) ? Math.min(Math.max(v, 0), 100000) : 0;
+  const src = Array.isArray(p.planDays) ? p.planDays : (Array.isArray(p.days) ? p.days : []);
+  const planDays = src.filter(isObj).map(d => {
+    const day = { name: str(d.name, 200), exercises: (Array.isArray(d.exercises) ? d.exercises : []).filter(isObj).map(e => {
+      const ex = { name: str(e.name, 200), trackType: e.trackType === 'time' ? 'time' : 'reps',
+        sets: num(e.sets), reps: num(e.reps), weight: num(e.weight) };
+      if (e.time !== undefined) ex.time = num(e.time);
+      if (typeof e.muscle === 'string') ex.muscle = str(e.muscle, 50);
+      if (typeof e.supersetGroup === 'string' && e.supersetGroup) ex.supersetGroup = str(e.supersetGroup, 50);
+      return ex;
+    }) };
+    if (typeof d.note === 'string') day.note = str(d.note, 500);
+    return day;
+  });
+  const out = {
+    id,
+    name: str(p.name, 200),
+    level: ['beginner', 'intermediate', 'advanced'].includes(p.level) ? p.level : 'beginner',
+    desc: str(p.desc, 500),
+    planDays,
+  };
+  if (typeof p.goal === 'string') out.goal = str(p.goal, 50);
+  if (typeof p.author === 'string') out.author = str(p.author, 100);
+  if (typeof p.weeks === 'number' && Number.isFinite(p.weeks)) out.weeks = num(p.weeks);
+  if (typeof p.daysPerWeek === 'number' && Number.isFinite(p.daysPerWeek)) out.daysPerWeek = num(p.daysPerWeek);
+  if (p._generated === true) out._generated = true;
+  if (typeof p._weekCycle === 'number' && Number.isFinite(p._weekCycle)) out._weekCycle = num(p._weekCycle);
+  if (isObj(p._progressionLog)) {
+    out._progressionLog = {};
+    Object.keys(p._progressionLog).slice(0, 2000).forEach(k => {
+      const v = p._progressionLog[k];
+      if (typeof v === 'number' && Number.isFinite(v)) out._progressionLog[k.slice(0, 200)] = v;
+    });
+  }
+  return out;
+}
+
 // ─── PLAN-ONLY IMPORT ───
 // Adds plans from a .vaultfit file without touching workouts, PRs, body metrics or profile
 function mImportPlanOnly(event) {
@@ -6070,15 +6113,18 @@ function mImportPlanOnly(event) {
       modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
 
       document.getElementById('m-plan-import-confirm').addEventListener('click', () => {
-        // Merge: add new plans, skip any with matching id
-        const existingIds = new Set(state.userPlans.map(p => p.id));
-        let added = 0;
+        // Normalise every plan first, then apply all at once (a bad entry never half-applies).
+        const used = new Set(state.userPlans.map(x => x && x.id));
+        let nextId = Date.now();
+        const fresh = [];
         plans.forEach(p => {
-          // Give new id if collision
-          if (existingIds.has(p.id)) p.id = Date.now() + Math.random();
-          state.userPlans.push(p);
-          added++;
+          while (used.has(nextId)) nextId++;
+          const np = mNormalisePlan(p, nextId);
+          if (np) { used.add(nextId); fresh.push(np); }
         });
+        if (!fresh.length) { modal.remove(); mToast('No valid plans found in this file', 'error'); return; }
+        fresh.forEach(np => state.userPlans.push(np));
+        const added = fresh.length;
         persistSave();
         modal.remove();
         mRenderMyPlans();
