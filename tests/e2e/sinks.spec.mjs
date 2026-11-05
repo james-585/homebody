@@ -184,8 +184,9 @@ test.describe('render sinks treat stored and imported values as data', () => {
         goal: window.goalLabel('toString'),
       };
     });
-    expect(r.sub).toBe('Ready to train?'); // 'constructor' is not a goal
-    expect(r.goal).toBe('Ready to train?');
+    // 'constructor' and 'toString' are not goals: the fixed "unrecognised" label, never the token or function text
+    expect(r.sub).toBe("a setting HomeBody doesn't recognise");
+    expect(r.goal).toBe("a setting HomeBody doesn't recognise");
     // PAY, 'constructor' and 'hidden' are not levels: no class, the fixed "unrecognised" label
     for (const b of r.badges) {
       expect(b.cls.trim()).toBe('plan-level-badge');

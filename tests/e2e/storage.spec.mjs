@@ -369,7 +369,7 @@ test.describe('load-time bars (AC2, principle 1)', () => {
       await expect(page.locator(BAR)).toContainText(title);
       await expect(page.locator(`${BAR} button:visible`)).toHaveText([
         'Export saved file',
-        'Export',
+        'Export this session', // T7b amendment (K30): states 6 to 8 export only this session
       ]);
       await page.evaluate(() => persistSave().catch(() => {}));
       expect(await page.evaluate(() => localStorage.getItem('vaultfit_v1'))).toBe(raw);
@@ -385,7 +385,10 @@ test.describe('load-time bars (AC2, principle 1)', () => {
     await seedStorage(page, { vaultfit_v1: raw, hb_seen_guide: '1' });
     await page.goto(siteURL + 'index.html');
     await expect(page.locator(BAR)).toContainText('Saving is not working');
-    await expect(page.locator(`${BAR} button:visible`)).toHaveText(['Export saved file', 'Export']);
+    await expect(page.locator(`${BAR} button:visible`)).toHaveText([
+      'Export saved file',
+      'Export this session', // T7b amendment (K30)
+    ]);
     expect(await page.evaluate(() => localStorage.getItem('vaultfit_v1'))).toBe(raw);
   });
 });

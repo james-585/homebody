@@ -184,11 +184,13 @@ test.describe('characterisation', () => {
   }) => {
     await openSeeded(appPage, siteURL);
     const { payload } = await exportPayload(appPage);
+    // T7b: the export format changed on purpose (docs/design/import-preview.md, T7 plan): schema 2, the
+    // health-data marker, and no profile name in the header (the profile itself is still inside).
     expect(payload).toEqual({
       _vaultfit: true,
-      _version: 1,
+      _version: 2,
       _exported: new Date(FROZEN_ISO).toISOString(),
-      _name: 'Test User',
+      _containsHealthData: true,
       ...seedData(),
     });
   });
