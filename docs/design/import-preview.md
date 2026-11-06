@@ -1,6 +1,6 @@
 # Import preview, confirm, Undo and export labelling (T7b)
 
-Status: **Approved by james585 on 2026-11-04, in chat.** Amendments 13.1 to 13.4 (T7b review: home goal subtitle, R4 versus R2, toast placement, A21) approved by james585 on 2026-11-06, in chat; 13.5 and 13.6 record the designer's T7b review rulings; 13.7 (health label wording, XM1 title) approved by james585 on 2026-11-06, in chat. Answers: Q1 the too-large backup saves the full export as `HomeBody_full_<YYYY-MM-DD>.txt`, labelled not importable today; Q2 the save bar's `Export` reads `Export this session` in states 6 to 8 (K30; amends write-failure-banner.md, see its dated amendment); Q3 Undo lasts until reload; Q4 the user taps Restart after Undo, no automatic reload; Q5 the import sheet and dialogs sit at z 9800, above the FAB; Q6 plans-only imports also get Undo; Q7 problem lists show positions only, never values. Section 12 (Addendum: refusal R5 "Not saved yet", the matching Undo refusal UF5 and the T7b handoff rules) approved by james585 on 2026-11-04, in chat: R5 as written, and Undo also refuses when changes are not saved. Kind mapping additions (R2 `stale`, R2b `restored`, UF2b, F9, their copy and check A37) and the rule that hides the save bar for the `restored`, `restoring` and `importing` read-only states (10.2, A38) approved by james585 on 2026-11-04, in chat. Author: product-designer, 2026-11-03. Branch `claude/t7-import-preview-spec`.
+Status: **Approved by james585 on 2026-11-04, in chat.** Amendments 13.1 to 13.4 (T7b review: home goal subtitle, R4 versus R2, toast placement, A21) approved by james585 on 2026-11-06, in chat; 13.5 and 13.6 record the designer's T7b review rulings; 13.7 (health label wording, XM1 title) and 13.8 (Busy export toasts, K50) approved by james585 on 2026-11-06, in chat; 13.9 records James's pre-deploy follow-up; 13.10 records the re-check outcomes. Answers: Q1 the too-large backup saves the full export as `HomeBody_full_<YYYY-MM-DD>.txt`, labelled not importable today; Q2 the save bar's `Export` reads `Export this session` in states 6 to 8 (K30; amends write-failure-banner.md, see its dated amendment); Q3 Undo lasts until reload; Q4 the user taps Restart after Undo, no automatic reload; Q5 the import sheet and dialogs sit at z 9800, above the FAB; Q6 plans-only imports also get Undo; Q7 problem lists show positions only, never values. Section 12 (Addendum: refusal R5 "Not saved yet", the matching Undo refusal UF5 and the T7b handoff rules) approved by james585 on 2026-11-04, in chat: R5 as written, and Undo also refuses when changes are not saved. Kind mapping additions (R2 `stale`, R2b `restored`, UF2b, F9, their copy and check A37) and the rule that hides the save bar for the `restored`, `restoring` and `importing` read-only states (10.2, A38) approved by james585 on 2026-11-04, in chat. Author: product-designer, 2026-11-03. Branch `claude/t7-import-preview-spec`.
 Plan: docs/plans/m1/T7.md (approved 2026-11-03). Related: docs/design/write-failure-banner.md (approved; bar patterns, live regions, push rule), docs/design/update-notice.md (update card), docs/design/design-system.md and tokens.json on `claude/design-system-m2` (proposal; tokens, components, z-scale), docs/security.md.
 Principles: 1 (Merge default, Replace explicit, snapshot, Undo), 2 (calm, plain, no claims), 4 (exports are labelled as health data), 5 (works offline; nothing interrupts a workout), 7 (the logging path is not touched), 8 (imported text is data: text nodes only).
 
@@ -493,7 +493,7 @@ Notes:
 +---------------------------------------------+
 ```
 Title `io.xw.title`, body `io.xw.body`, list (6.4), footer `Done`. The toast is not shown in this case (the sheet replaces it).
-**During an open workout layer** (Export from the save bar in state 2 while a workout is open) the sheet is **not** shown: only the toast `io.xw.toastWorkout`, and the card row from 3.1 offers the details afterwards.
+**During an open workout layer** (Export from the save bar in state 2 while a workout is open) the sheet is **not** shown: only the toast `io.xw.toastWorkout`, and the card row from 3.1 offers the details afterwards. **While an import sheet step or dialog is already open and no workout is open** (Export backup from R5, UF5 or U2), the open step is not replaced: toast `io.xw.toastBusy` only, and the card row offers the details afterwards (amended 2026-11-06, 13.8).
 
 ### 5.3 Partial export (K30; save-bar states 6, 7, 8)
 - Filename `HomeBody_partial_<YYYY-MM-DD>.vaultfit`; the file carries `_partial`.
@@ -519,7 +519,7 @@ Title `io.xw.title`, body `io.xw.body`, list (6.4), footer `Done`. The toast is 
 | [   CLOSE   ]      [ SAVE AS TEXT FILE ]    |
 +---------------------------------------------+
 ```
-Title `io.xc.title`, body `io.xc.body`, health line `io.health.short`, primary `io.btn.saveText`. Mid-workout layer open: toast `io.xc.toastWorkout` only.
+Title `io.xc.title`, body `io.xc.body`, health line `io.health.short`, primary `io.btn.saveText`. Mid-workout layer open: toast `io.xc.toastWorkout` only. Import sheet step or dialog already open and no workout open: toast `io.xc.toastBusy` only; the open step stays (amended 2026-11-06, 13.8).
 
 **What `Save as text file` saves (Decision 1):** the full export, the same content `buildExport` would have produced, without the 20 MB cap, as a `text/plain` file named `HomeBody_full_<YYYY-MM-DD>.txt` (same date rule as 5.1; no profile name). It is **not** the `vaultfit_v1` as-found copy, which has stopped updating at this size. After the download: toast `io.xc.toastSaved`, also written to `#hb-io-status`, and the sheet closes. If that download fails: toast `io.x.failed`.
 
@@ -535,7 +535,7 @@ Title `io.xc.title`, body `io.xc.body`, health line `io.health.short`, primary `
 | XM1 | module failed to load | sheet, as M1 | `io.m.loadExport.title` / `io.m.loadExport` (title amended 2026-11-06, 13.7); footer: Close, Reload (primary); body also offers `Export saved file` as a secondary full-width button in the body when `vaultfit_v1` is readable |
 | XM2 | version skew | sheet, as M2 | `io.m.skew.title` / `io.m.skew`; Close, Reload |
 | XF | anything else (download could not start) | toast + status | `io.x.failed` |
-During an open workout layer XM1 and XM2 are toasts only: `io.x.failedWorkout`.
+During an open workout layer XM1 and XM2 are toasts only: `io.x.failedWorkout`. While an import sheet step or dialog is already open and no workout is open, XM1, XM2 and XF are toasts only: `io.x.failedBusy`; the open step stays (amended 2026-11-06, 13.8). Rule: the workout variants only when `wmOpen()`; otherwise the Busy variants.
 
 ---
 
@@ -788,14 +788,17 @@ The validator returns at most 20 problems. If 20 are shown, add `io.list.first20
 | `io.xw.title` | `Backup saved, with a problem` |
 | `io.xw.body` | `Your backup was saved, but {n} entries in it wouldn't import into HomeBody as they are, so it can't fully restore your data yet. Your data in the app is unchanged. Edit these entries, then export again:` (n = 1: `…but 1 entry in it wouldn't import into HomeBody as it is, …Edit this entry, then export again:`) |
 | `io.xw.toastWorkout` | `Backup saved. Some entries won't import: see Profile after your workout.` |
+| `io.xw.toastBusy` | `Backup saved. Some entries won't import: see Data & backup when you're done here.` (added 2026-11-06, 13.8) |
 | `io.xp.toast` | `Partial backup saved: only what HomeBody has this session. Keep the file private.` |
 | `io.xc.title` | `Backup too large` |
 | `io.xc.body` | `Your history is bigger than HomeBody can import (20 MB), so it hasn't made a backup file that couldn't be restored. Nothing has changed. To keep a full copy anyway, save it as a text file. It holds everything, but HomeBody can't import it today.` |
 | `io.xc.toastSaved` | `Full copy saved as a text file. HomeBody can't import it today. Keep it private.` |
 | `io.xc.toastWorkout` | `Backup not made: too large. See Profile after your workout.` |
+| `io.xc.toastBusy` | `Backup not made: too large. Nothing was changed. See Data & backup when you're done here.` (added 2026-11-06, 13.8) |
 | `io.raw.toast` | `Saved file downloaded. It holds your health data. Keep it private.` |
 | `io.x.failed` | `Couldn't make the backup. Nothing was changed. Try again.` |
 | `io.x.failedWorkout` | `Couldn't make the backup. Try again after your workout.` |
+| `io.x.failedBusy` | `Couldn't make the backup. Nothing was changed. Try again from Data & backup when you're done here.` (added 2026-11-06, 13.8) |
 The exact `io.xw.body` singular is: `Your backup was saved, but 1 entry in it wouldn't import into HomeBody as it is, so it can't fully restore your data yet. Your data in the app is unchanged. Edit this entry, then export again:`.
 
 ---
@@ -1004,7 +1007,7 @@ Status: **Approved by james585 on 2026-11-04, in chat** (R5 as written; Undo als
 - **When:** at the Import backup or Import plans only tap, before the file picker opens (with R1 to R4; the picker never opens), and at apply if it appears then (I6 to R5; nothing imported; the file text is dropped).
 - **No second save-problem UI.** R5 does not offer Retry itself. It points to the approved save-problem bar (write-failure-banner.md) and uses its words: not saved, Retry, Export, Saved. The bar is at z 10000, outside `.app`, and pushes the sheet down, so it stays visible and tappable above R5's scrim. `inert` goes on `.app` only, never on `#hb-save`.
 - **Copy:** title `io.r.unsaved.title`. Body `io.r.unsaved` when the save bar is showing (states 1 to 3b; state 5 cannot occur because import is refused during a workout), or `io.r.unsavedNoBar` when the kind is `unsaved` but no bar is showing (the plain copy is ahead with no failed save this session). Marker: circle `!` in `--danger`, as in the bar, because data is at risk.
-- **Actions:** footer left `Close` (secondary), right `Export backup` (primary, `io.btn.export`). Export runs E1 unchanged; the backup includes the unsaved in-memory edit, which is what protects it. R5 stays open and E1's toast confirms; an export warning or refusal replaces R5 with 5.2 or 5.4 as usual. No Retry button in the sheet.
+- **Actions:** footer left `Close` (secondary), right `Export backup` (primary, `io.btn.export`). Export runs E1 unchanged; the backup includes the unsaved in-memory edit, which is what protects it. R5 stays open and E1's toast confirms (amended 2026-11-06, 13.8: a warning, too-large refusal or failure while R5 is open shows its Busy toast and R5 stays, which supersedes the rest of this sentence); an export warning or refusal replaces R5 with 5.2 or 5.4 as usual. No Retry button in the sheet.
 - **When the bar reaches Saved** while R5 is open, the body gains the line `io.r.unsaved.nowSaved` (`--text`, no marker), announced once through `#hb-io-status`; focus does not move. The user closes and taps Import again (a fresh tap gives the picker its permission).
 - **Accessibility:** as every refusal: focus to the title on open, `aria-describedby` = the body, Escape and scrim = Close, focus returns to the opener. No `role="alert"`: the bar has already alerted once for this episode and R5 must not alert again. Tab order follows 7.1: body, footer Close, Export backup, then the header Close. While `aria-modal` is set a screen-reader user cannot move to the bar, so the body names it ("the message at the top") and `Export backup` is the way to protect the data from inside the dialog; after closing R5, the bar's Retry is the next region in reading order. 48 px buttons; at 200% text the footer stacks with Export backup at the bottom.
 - **Light and dark, accent:** tokens as in 7.6 and 7.7; nothing new.
@@ -1128,5 +1131,32 @@ Keys in this subsection are written without code formatting on purpose: section 
 
 Check: A1 expects the new io.health.label text; an XM1 test (module blocked, Export tapped) expects the title io.m.loadExport.title.
 
+### 13.8 Export outcomes while an import step or dialog is open (K50; approved by james585 on 2026-11-06, in chat)
+- **When:** Export backup is tapped inside an open import sheet step or dialog (R5, UF5, U2) and no workout layer is open, and the export ends in a warning (5.2), a too-large refusal (5.4) or a failure (XM1, XM2, XF).
+- **What happens:** the open step or dialog stays as it is (the user is in the middle of deciding something), and only a toast is shown, also written to #hb-io-status. Section 13.3 placement applies, so the toast never covers the step's buttons.
+- **Rule:** the workout variants (io.xw.toastWorkout, io.xc.toastWorkout, io.x.failedWorkout) only when wmOpen(); otherwise these Busy variants:
+  - warning: io.xw.toastBusy, "Backup saved. Some entries won't import: see Data & backup when you're done here." The card row from 3.1 (io.card.lastExportWarn, See details) offers the list afterwards.
+  - too large: io.xc.toastBusy, "Backup not made: too large. Nothing was changed. See Data & backup when you're done here."
+  - failure: io.x.failedBusy, "Couldn't make the backup. Nothing was changed. Try again from Data & backup when you're done here."
+- A successful export there keeps its normal toast (io.x.toast, io.x.toastOne or io.xp.toast).
+- The strings are in section 6.8, which is the single copy table HB_IO_COPY is compared against (keys here are written without code formatting on purpose). 5.2, 5.4, 5.6 and 12.1 are amended to match.
+- Check: with R5 open (bar state 2) and buildExport stubbed to warn, refuse as too large and fail in turn, tapping Export backup leaves R5 open with its title focused, shows the matching Busy toast once and writes it to #hb-io-status; with the workout layer open the Workout variants show instead.
+
+### 13.9 Follow-up before deploy: Save as text file on iPhone (James, 2026-11-06, in chat)
+`Save as text file` (5.4, HomeBody_full_<YYYY-MM-DD>.txt, text/plain) must be checked on a real iPhone (Safari and the installed PWA) before deploy: the download starts, the file appears in Files with the .txt name and full content, and the io.xc.toastSaved toast shows. This is a pre-deploy follow-up, not a T7b merge blocker. If iOS renders the text inline instead of saving it, stop and bring options to James; do not change copy without approval.
+
+### 13.10 T7b re-check outcomes for contract items 8 to 14 (2026-11-06)
+From the re-check against 13.6:
+| Item | Outcome |
+| --- | --- |
+| 8 Landscape 200% (R5 with the bar showing) | Should-fix: R5 at 812x375 needs bottom and side padding so its title and two body lines show above the footer. |
+| 9 Toast lift (13.3) | Required fix: the lifted position goes stale when the sheet changes state or size (footer height changes, stacking, the bar pushing the sheet). Recompute it on every state change and resize, and drop it when the sheet and dialogs close. |
+| 10 Tab cycle | Required fix: in R5 and UF5, Tab and Shift+Tab must cycle within the sheet, and may go on to the save bar only in the order 12.1 gives; focus never reaches body. |
+| 11 Focus after Saved | No outcome reported in this re-check; still required as written in 13.6. |
+| 12 I2 small files | No outcome reported in this re-check; still required as written in 13.6. |
+| 13 R4 versus R2 (13.2) | No outcome reported in this re-check; still required as written in 13.6. |
+| 14 I6 line | Required fix: io.apply.keepOpen must sit outside the scrolling body, directly above the pinned footer, so it is always visible while the preview stays shown above it. |
+Items 9, 10 and 14 block the re-review; item 8 does not.
+
 ## Approval
-Approved by james585 on 2026-11-04, in chat (answers in section 11). Amendments 13.1 to 13.4 and 13.7 approved by james585 on 2026-11-06, in chat.
+Approved by james585 on 2026-11-04, in chat (answers in section 11). Amendments 13.1 to 13.4, 13.7 and 13.8 approved by james585 on 2026-11-06, in chat; 13.9 follow-up decided by James the same day.
