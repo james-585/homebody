@@ -1939,7 +1939,7 @@
     }
 
     /** Build the export file text for `payload` (the six sets). Partial when the data is unreadable. */
-    async function buildExport(payload) {
+    async function buildExport(payload, { uncapped = false } = {}) {
       const io = await getIo();
       let partialReason = null;
       if (boot === 'readonly' && !['restored', 'restoring', 'importing'].includes(readOnlyKind)) {
@@ -1948,6 +1948,7 @@
       return io.buildExport(payload, {
         now: now(),
         partialReason,
+        uncapped: uncapped === true,
         migrate: (d) => runMigrations(migrations, d, { current }),
       });
     }
@@ -2082,7 +2083,7 @@
       /** Would an import be refused now (a kind) or not (null)? Ask before opening the file picker. */
       canImport: () => store.importBlocked(),
       /** The export file for `payload` (the six sets): {ok, text, filename, partial, warnings}. */
-      exportFile: (payload) => store.buildExport(payload),
+      exportFile: (payload, opts) => store.buildExport(payload, opts),
     });
     store
       .load()

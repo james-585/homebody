@@ -376,7 +376,7 @@ export function summarize(current, validated, { mirrorCeiling = Infinity } = {})
     plans: {
       total: d.userPlans.length,
       items: d.userPlans.slice(0, PLAN_LIST_MAX).map((p) => ({
-        name: clip(p.name, 40),
+        name: clip(p.name, 100), // the UI clips by grapheme and adds the ellipsis
         days: p.planDays.length,
         present: planIds.has(p.id),
       })),
@@ -397,7 +397,7 @@ export function summarize(current, validated, { mirrorCeiling = Infinity } = {})
  * same validator runs over the text: records it would refuse and fields it would ignore are
  * reported in `warnings`, and the file is still produced. `bytes` is the exact UTF-8 size.
  */
-export function buildExport(state, { now, partialReason = null, migrate } = {}) {
+export function buildExport(state, { now, partialReason = null, migrate, uncapped = false } = {}) {
   if (!Number.isFinite(now)) throw new TypeError('buildExport: now must be a finite number');
   const st = state || {};
   const exported = new Date(now).toISOString();
@@ -424,8 +424,11 @@ export function buildExport(state, { now, partialReason = null, migrate } = {}) 
     return { ok: false, reason: 'not-serialisable' };
   }
   const bytes = new TextEncoder().encode(text).length;
-  if (bytes > LIMITS.maxBytes) return { ok: false, reason: 'too-large' };
-  const v = validate(text, { now, migrate });
+  const over = bytes > LIMITS.maxBytes;
+  if (over && !uncapped) return { ok: false, reason: 'too-large' };
+  // `uncapped` (the "Save as text file" escape for a history the importer would refuse for size): the same text,
+  // not checked by the validator (it would refuse the size), so its warnings are empty and `unchecked` says so.
+  const v = over ? { ok: true, warnings: { dropped: 0 } } : validate(text, { now, migrate });
   const day = exported.slice(0, 10);
   return {
     ok: true,
@@ -433,6 +436,7 @@ export function buildExport(state, { now, partialReason = null, migrate } = {}) 
     bytes,
     filename: partialReason ? `HomeBody_partial_${day}.vaultfit` : `HomeBody_${day}.vaultfit`,
     partial: !!partialReason,
+    unchecked: over,
     warnings: v.ok
       ? { refused: [], dropped: v.warnings.dropped }
       : { refused: v.problems, dropped: 0 },

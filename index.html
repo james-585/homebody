@@ -237,13 +237,18 @@ html[data-theme="light"] #hb-io-sheet,html[data-theme="light"] #hb-io-dlg{backgr
 .hb-io-grab{width:36px;height:4px;background:var(--border);border-radius:2px;margin:8px auto 0;flex:0 0 auto}
 .hb-io-hdr{padding:10px 96px 10px 18px;border-bottom:1px solid var(--border);flex:0 0 auto;display:flex;align-items:center;min-height:56px}
 .hb-io-title{font-family:Oswald,sans-serif;font-weight:700;font-size:1.25rem;line-height:1.25;color:var(--text);margin:0;outline:none;overflow-wrap:anywhere}
-.hb-io-close{position:absolute;top:6px;right:6px;min-width:48px;min-height:48px;padding:0 12px;background:none;border:none;color:var(--text);font:600 0.875rem Inter,sans-serif;cursor:pointer}
+.hb-io-close{position:absolute;top:16px;right:6px;min-width:48px;min-height:48px;padding:0 12px;background:none;border:none;color:var(--text);font:600 0.875rem Inter,sans-serif;cursor:pointer}
 .hb-io-close[aria-disabled=true]{pointer-events:none}
 .hb-io-close:focus-visible,.hb-io-panel button:focus-visible,#hb-io-dlg button:focus-visible,.hb-io-opt:focus-within{outline:2px solid var(--text);outline-offset:2px}
 .hb-io-body{padding:14px 18px;overflow-y:auto;overscroll-behavior:contain;flex:1 1 auto;min-height:0}
 .hb-io-foot{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--border);padding:12px 18px max(12px,env(safe-area-inset-bottom));display:flex;flex-wrap:wrap;gap:8px;flex:0 0 auto}
 .hb-io-foot[hidden]{display:none}
-.hb-io-foot button,#hb-io-dlg button{flex:1 1 9rem;min-height:48px}
+.hb-io-foot button,#hb-io-dlg button{flex:1 1 0;min-width:max-content;min-height:48px;white-space:nowrap}
+#hb-io-dlg .hb-io-dlg-foot>.hb-io-wide{flex:0 0 auto;width:100%;min-height:48px}
+.hb-io-body .hb-io-wide{min-height:48px}
+html.hb-io-open .toast-container{bottom:var(--hb-io-toast-bottom,calc(var(--nav-h) + var(--safe-bottom) + 14px))}
+html.hb-io-dlg-open .m-toast{pointer-events:none}
+@media (max-height:500px){.hb-io-panel{max-height:calc(100vh - var(--hb-bar-h,0px) - 8px);max-height:calc(100dvh - var(--hb-bar-h,0px) - 8px)}.hb-io-grab{display:none}.hb-io-hdr{min-height:48px;padding-top:4px;padding-bottom:4px}.hb-io-close{top:0}.hb-io-body{padding-top:8px;padding-bottom:8px}.hb-io-foot{padding-top:6px;padding-bottom:max(6px,env(safe-area-inset-bottom))}}
 .hb-io-busy,.hb-io-foot button[aria-disabled=true]{pointer-events:none}
 .hb-io-eyebrow{font:700 0.75rem Oswald,sans-serif;letter-spacing:0.1em;text-transform:uppercase;color:var(--text);margin:16px 0 6px;padding:0}
 .hb-io-rows,.hb-io-list{list-style:none;margin:0;padding:0}
@@ -253,12 +258,11 @@ html[data-theme="light"] #hb-io-sheet,html[data-theme="light"] #hb-io-dlg{backgr
 .hb-io-rowname{font:500 0.9375rem Inter,sans-serif;color:var(--text)}
 .hb-io-detail{font:0.875rem/1.45 Inter,sans-serif;color:var(--text);font-variant-numeric:tabular-nums}
 .hb-io-how{border:0;margin:0;padding:0;min-width:0}
-.hb-io-how legend{padding:0}
+.hb-io-how legend{padding:16px 0 0}
 .hb-io-opt{display:flex;gap:12px;align-items:flex-start;min-height:64px;padding:12px;border:1.5px solid var(--muted);border-radius:12px;margin-bottom:8px;cursor:pointer;background:var(--surface)}
 .hb-io-opt.sel{border:2px solid var(--accent);padding:11.5px}
 .hb-io-opt input{width:22px;height:22px;margin:2px 0 0;flex:0 0 auto;accent-color:var(--accent)}
-.hb-io-opt-off{opacity:0.4}
-.hb-io-opt-off .hb-io-why{opacity:1}
+.hb-io-opt-off input,.hb-io-opt-off .hb-io-dim{opacity:0.4}
 .hb-io-opt-t{min-width:0;flex:1 1 auto}
 .hb-io-opt-name{font:700 1rem Inter,sans-serif;color:var(--text)}
 .hb-io-prog{height:6px;border-radius:3px;background:var(--surface2);border:1px solid var(--border);overflow:hidden;margin:8px 0 12px}
@@ -671,7 +675,7 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
     </div>
     <div class="plan-tabs">
       <button class="plan-tab active" onclick="mSwitchPlanTab('calendar',this)">📅 Calendar</button>
-      <button class="plan-tab" onclick="mSwitchPlanTab('browse',this)">Browse <span id="m-plan-badge" style="display:none;background:var(--accent);color:#000;font-size:0.7rem;padding:1px 5px;border-radius:8px;margin-left:3px;font-family:'Oswald',sans-serif;font-weight:700;"></span></button>
+      <button class="plan-tab" data-plan-tab="browse" onclick="mSwitchPlanTab('browse',this)">Browse <span id="m-plan-badge" style="display:none;background:var(--accent);color:#000;font-size:0.7rem;padding:1px 5px;border-radius:8px;margin-left:3px;font-family:'Oswald',sans-serif;font-weight:700;"></span></button>
       <button class="plan-tab" onclick="mSwitchPlanTab('generate',this)">✨ Generate</button>
     </div>
     <div id="m-plan-tab-calendar" class="plan-tab-content active"><div style="padding:12px 14px;background:var(--bg);" id="m-plan-calendar"></div></div>
@@ -1172,7 +1176,7 @@ const HB_PLAN_LEVELS = { beginner: 'beginner', intermediate: 'intermediate', adv
 // shows the fixed "unrecognised" label (import-preview.md, io.enum.unknown) and no class.
 function hbPlanLevel(level) {
   const v = level == null || level === '' ? 'beginner' : hbOwn(HB_PLAN_LEVELS, level);
-  return v ? { cls: v, label: v } : { cls: '', label: "a setting HomeBody doesn't recognise" };
+  return v ? { cls: v, label: v } : { cls: '', label: HB_IO_COPY['io.enum.unknown'] };
 }
 
 function mToast(msg, type='') {
@@ -1260,7 +1264,7 @@ function estimateDuration(exercises) {
 function calcCalories(exercises, bwKg, durMins) {
   const bw = bwKg || 70; let total = 0;
   exercises.forEach(e => {
-    const met = MET_VALUES[e.name] || 4.0;
+    const met = hbOwn(MET_VALUES, e.name) || 4.0;
     const mins = e.trackType === 'time' ? (e.sets * (e.time||0)) / 60 : e.sets * (e.reps||0) * 3 / 60 + Math.max(0, e.sets-1);
     total += met * bw * (mins / 60);
   });
@@ -1274,7 +1278,7 @@ function calcCalories(exercises, bwKg, durMins) {
 function calcCalorieRange(exercises, bwKg, durMins) {
   const bw = bwKg || 70; let total = 0;
   exercises.forEach(e => {
-    const met = MET_VALUES[e.name] || 4.0;
+    const met = hbOwn(MET_VALUES, e.name) || 4.0;
     const mins = e.trackType === 'time' ? (e.sets * (e.time||0)) / 60 : e.sets * (e.reps||0) * 3 / 60 + Math.max(0, e.sets-1);
     total += met * bw * (mins / 60);
   });
@@ -2008,8 +2012,8 @@ function mRenderHome() {
 }
 
 function goalLabel(goal) {
-  // A token that is not in the table (an unrecognised value from an old file) shows the fixed label, never the token.
-  return hbOwn({lose_fat:'Fat loss goal 🔥',build_muscle:'Muscle building goal 💪',increase_strength:'Strength goal 🏋️',improve_fitness:'Fitness goal ❤️'}, goal) || (goal ? "a setting HomeBody doesn't recognise" : 'Ready to train?');
+  // The goal subtitle for a token that is not in the table is the fixed 'Ready to train?', never the token.
+  return hbOwn({lose_fat:'Fat loss goal 🔥',build_muscle:'Muscle building goal 💪',increase_strength:'Strength goal 🏋️',improve_fitness:'Fitness goal ❤️'}, goal) || 'Ready to train?'; // any goal without a label (a token from an old file too): fixed words, never the token
 }
 
 function mRenderTodayAction() {
@@ -2093,42 +2097,10 @@ function mRenderProgress() {
   mRenderMuscleRecovery();
   mRenderWeeklyVolumeChart();
   mRenderMilestones();
-  mRenderProgressLog();
   // Sync stats
   const cals = state.workouts.reduce((s,w)=>s+(w.calories||0),0);
   const wEl = document.getElementById('hm-workouts-p'); if (wEl) wEl.textContent = state.workouts.length;
   const cEl = document.getElementById('hm-calories-p'); if (cEl) cEl.textContent = cals > 999 ? (cals/1000).toFixed(1)+'k' : cals;
-}
-
-function mRenderProgressLog() {
-  const el = document.getElementById('m-progress-log-list');
-  if (!el) return;
-  if (!state.workouts.length) {
-    el.innerHTML = '<div class="empty-state"><div class="icon">📋</div><p>No workouts yet.</p></div>';
-    return;
-  }
-  const sorted = [...state.workouts].sort((a,b)=>new Date(b.date)-new Date(a.date));
-  el.innerHTML = sorted.map(w => {
-    const date = new Date(w.date).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
-    const exRows = (w.exercises||[]).map(e => {
-      const eff = e.trackType==='time' ? `${hbNum(e.time)}s` : `${hbNum(e.reps)} reps`;
-      const wt = hbNum(e.weight)>0 ? ` @ ${hbNum(e.weight)}kg` : '';
-      return `<div class="log-ex-item" style="cursor:pointer;" onclick="mShowExerciseProgress(this.dataset.name)" data-name="${escHtml(e.name)}"><div>${escHtml(e.name)}</div><div class="log-ex-detail">${hbNum(e.sets)} × ${eff}${wt} <span style="color:var(--accent);font-size:0.65rem;margin-left:4px;">📈</span></div></div>`;;
-    }).join('');
-    const grade = w.grade ? `<span style="font-size:0.7rem;background:rgba(232,77,42,0.1);color:var(--accent);padding:2px 7px;border-radius:8px;font-family:'Oswald',sans-serif;font-weight:700;">${escHtml(w.grade)}</span>` : '';
-    return `<div class="log-entry">
-      <div class="log-entry-hdr">
-        <div><div class="log-entry-date">${date}</div><div class="log-entry-name">${escHtml(w.name||'Workout')}</div></div>
-        <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
-          ${grade}
-          <button class="log-edit-btn" onclick="mShowWorkout(${hbNum(w.id)})" style="background:var(--surface2);border-color:var(--border);">👁</button>
-          <button class="log-edit-btn" onclick="mOpenEdit(${hbNum(w.id)})">✏️</button>
-        </div>
-      </div>
-      <div class="log-entry-exs">${exRows}</div>
-      <div class="log-mini"><span>${w.exercises?.length||0} exercises</span><span class="orange">~${hbNum(w.calories)} kcal</span>${hbNum(w.rpe)?`<span>RPE ${hbNum(w.rpe)}</span>`:''}</div>
-    </div>`;
-  }).join('');
 }
 
 // ─── EXERCISE SHEET ───
@@ -3668,7 +3640,7 @@ EX_INSTRUCTIONS['Curtsy Lunge'] = {overview:'A lunge variation where the rear fo
 EX_INSTRUCTIONS['DB Curtsy Lunge'] = {overview:'A loaded curtsy lunge with dumbbells. Increases glute medius, glute maximus, and adductor demand while requiring greater balance and core stability.',steps:['Hold a dumbbell in each hand at sides.','Step one foot back and across behind the other.','Lower body until rear knee approaches floor.','Keep torso upright and front knee tracking over toes.','Drive through front heel to return. Alternate sides.'],tips:['Start lighter than you think — the balance challenge is significant','The front heel is your anchor point — do not let it rise','If stability is the issue hold one dumbbell in the hand opposite your front foot','This exercise has a steep learning curve but is worth mastering']};
 
 function getInstructions(ex) {
-  if (EX_INSTRUCTIONS[ex.name]) return EX_INSTRUCTIONS[ex.name];
+  if (hbOwn(EX_INSTRUCTIONS, ex.name)) return EX_INSTRUCTIONS[ex.name];
   const n=ex.name.toLowerCase(), m=ex.muscle, eq=ex.equip;
   const eqW=eq==='Dumbbell'?'dumbbell':eq==='Kettlebell'?'kettlebell':'weight';
   const eqP=eq==='Dumbbell'?'dumbbells':eq==='Kettlebell'?'kettlebells':'weights';
@@ -3767,7 +3739,6 @@ function mAddExFromLib(name) {
 function mRenderLog() {
   // Render into both the history section on Train tab and the progress log
   const container = document.getElementById('m-log-list');
-  mRenderProgressLog(); // also update the Progress tab history
   if (!container) return;
   container.innerHTML=state.workouts.map(w=>{
     const date=new Date(w.date).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
@@ -3848,7 +3819,7 @@ function calcEpley1RM(weight, reps) {
 }
 
 function getStrengthLevel(exName, orm, bodyweight) {
-  const standards = STRENGTH_STANDARDS[exName];
+  const standards = hbOwn(STRENGTH_STANDARDS, exName);
   if (!standards || !orm || !bodyweight) return null;
   const ratio = orm / bodyweight;
   if (ratio >= standards[3]) return { level: 'Elite',        color: '#00d68f' };
@@ -4513,9 +4484,9 @@ function mDeletePlan(id){mConfirm('Delete Plan','This plan will be permanently d
 // a supersetGroup instead of listing them as unrelated rows.
 function mRenderPlanDayExerciseList(exercises) {
   // Determine group membership + order (position within group = array order)
-  const groupCounts = {};
+  const groupCounts = Object.create(null); // a group token from a file is a key: no inherited names
   exercises.forEach(e => { if (e.supersetGroup) groupCounts[e.supersetGroup] = (groupCounts[e.supersetGroup]||0)+1; });
-  const groupSeenPos = {};
+  const groupSeenPos = Object.create(null);
   const seenDividers = new Set();
 
   return exercises.map(e => {
@@ -5983,7 +5954,7 @@ function mTickColour(){const el=document.getElementById('m-timer-disp');if(!el)r
 const HB_IO_COPY = {
   'io.card.title': 'Data & Backup',
   'io.card.intro': 'Keep a copy of your workouts, records, plans and profile in a file. You can bring it back on this phone or another one.',
-  'io.health.label': 'Backups hold your health data, such as body measurements. Keep them private. They stay on your device unless you share them.',
+  'io.health.label': 'Backups hold your health data, such as body measurements. Keep them private. HomeBody never uploads them, but your phone may back up or sync your files.',
   'io.health.short': 'It holds your health data. Keep it private.',
   'io.card.fileName': 'File name: {file}',
   'io.card.importNote': "Before anything changes you'll see what will happen, and you can undo an import.",
@@ -6016,6 +5987,7 @@ const HB_IO_COPY = {
   'io.btn.checkAgain': 'Check again',
   'io.btn.tryAgain': 'Try again',
   'io.btn.seeDetails': 'See details',
+  'io.btn.exportSaved': 'Export saved file', // the approved save-bar label (design: 3.2, 5.5)
   'io.btn.saveText': 'Save as text file',
   'io.btn.addPlans': ['Add 1 plan', 'Add {n} plans'],
   'io.btn.adding': 'Adding…',
@@ -6093,6 +6065,7 @@ const HB_IO_COPY = {
   'io.enum.unknown': "a setting HomeBody doesn't recognise",
   'io.m.load.title': "Import isn't available right now",
   'io.m.load': "Part of HomeBody didn't load. Reload HomeBody, then try again. Nothing was changed.",
+  'io.m.loadExport.title': "Can't make a backup right now",
   'io.m.loadExport': "Part of HomeBody didn't load, so it can't make a backup. Reload HomeBody, then try again. Nothing was changed.",
   'io.m.skew.title': 'HomeBody needs to reload',
   'io.m.skew': 'An update arrived while HomeBody was open. Reload to finish it, then try again. Nothing was changed.',
@@ -6274,6 +6247,7 @@ const HB_IO_STATES = {
   UF5: ['bad', 'io.r.unsaved.title', 'io.uf.unsaved'],
 };
 
+Object.freeze(HB_IO_COPY); Object.freeze(HB_IO_KIND_MAP); Object.freeze(HB_IO_REASON_MAP); Object.freeze(HB_IO_STATES); Object.freeze(HB_IO_WHY);
 const HBIO = (function () {
   const C = HB_IO_COPY;
   const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -6320,16 +6294,13 @@ const HBIO = (function () {
   const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
   // 2.2 rule 3: at most 40 user-perceived characters, then an ellipsis. Never splits a surrogate pair.
-  // `cut`: the value came from summarize already cut at 40 code points (plan names) without a mark, so a value of
-  // 40 or more code points may have been longer and gets the ellipsis too.
-  function clip40(v, cut) {
+  function clip40(v) {
     const s = typeof v === 'string' ? v : '';
     let g;
     try { g = Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s), (x) => x.segment); } catch (e) { g = Array.from(s); }
-    if (g.length > 40) return g.slice(0, 40).join('') + '…';
-    return cut && Array.from(s).length >= 40 ? s + '…' : s;
+    return g.length > 40 ? g.slice(0, 40).join('') + '…' : s;
   }
-  function nameSpan(v, cut) { const s = E('span', 'hb-io-name'); s.dir = 'auto'; s.textContent = clip40(v, cut); return s; }
+  function nameSpan(v) { const s = E('span', 'hb-io-name'); s.dir = 'auto'; s.textContent = clip40(v); return s; }
   function marker(kind) {
     const m = E('span', 'hb-io-mk ' + kind);
     m.setAttribute('aria-hidden', 'true');
@@ -6354,16 +6325,31 @@ const HBIO = (function () {
 
   // ── the sheet ──
   let sheet = null, panel, hdrMk, titleEl, bodyEl, footEl, closeBtn, dlg, dlgBox;
-  let isOpen = false, opener = null, openerSel = '', cur = null, dlgSpec = null, lockN = 0;
+  let isOpen = false, opener = null, openerSel = '', cur = null, dlgSpec = null, sheetLocked = false, dlgLocked = false, busyApply = false;
   let flow = null; // the import in progress: {plans, file, imp, summary, mode, cancelled, applying}
   let last = null; // the last completed import this session: {imp, at, plans}
   let pendingExportWarn = null;
   const INERT = ['.app', 'nav.bottom-nav', '#m-fab-tray', '#m-fab-backdrop'];
-  function lockPage(on) {
-    lockN += on ? 1 : -1;
-    const want = lockN > 0;
+  // Two booleans, not a counter: whichever layers are open, the page is inert and the key listener is on; when
+  // none is open both are undone, so nothing can leak.
+  function applyLock() {
+    const want = sheetLocked || dlgLocked;
     for (const sel of INERT) { const e = document.querySelector(sel); if (e) e.inert = want; }
+    document.documentElement.classList.toggle('hb-io-open', want);
+    document.documentElement.classList.toggle('hb-io-dlg-open', dlgLocked);
+    liftToasts();
+    if (want) document.addEventListener('keydown', onKey, true); else document.removeEventListener('keydown', onKey, true);
   }
+  // 13.3: while the sheet or a dialog is open the toasts sit at least 12 px above the footer or the dialog's buttons
+  function liftToasts() {
+    const root = document.documentElement;
+    if (!(sheetLocked || dlgLocked)) { root.style.removeProperty('--hb-io-toast-bottom'); return; }
+    let px = 0;
+    if (dlgLocked && dlgBox) { const f = dlgBox.querySelector('.hb-io-dlg-foot'); if (f) px = window.innerHeight - f.getBoundingClientRect().top; }
+    else if (footEl && !footEl.hidden) px = footEl.getBoundingClientRect().height;
+    root.style.setProperty('--hb-io-toast-bottom', Math.ceil(px + 12) + 'px');
+  }
+  function setBusy(on) { busyApply = on; barRefresh(); } // the update card waits while an apply or undo runs (hbSaveHold)
   function build() {
     if (sheet) return;
     sheet = E('div', 'modal-overlay');
@@ -6380,7 +6366,7 @@ const HBIO = (function () {
     footEl = E('div', 'hb-io-foot');
     closeBtn = E('button', 'hb-io-close'); closeBtn.type = 'button'; closeBtn.textContent = C['io.btn.close'];
     closeBtn.addEventListener('click', () => { if (closeBtn.getAttribute('aria-disabled') !== 'true') escapeSheet(); });
-    panel.append(grab, hdr, bodyEl, footEl, closeBtn);
+    panel.append(grab, hdr, closeBtn, bodyEl, footEl);
     sheet.append(panel);
     sheet.addEventListener('click', (e) => { if (e.target === sheet) escapeSheet(); });
     dlg = E('div'); dlg.id = 'hb-io-dlg';
@@ -6396,8 +6382,9 @@ const HBIO = (function () {
     openerSel = opener && opener.getAttribute ? (opener.getAttribute('data-io') ? '[data-io="' + opener.getAttribute('data-io') + '"]' : opener.closest && opener.closest('#hb-save') ? '#hb-save button.btn-primary' : '') : '';
     isOpen = true;
     sheet.classList.add('open');
-    lockPage(true);
-    document.addEventListener('keydown', onKey, true);
+    panel.inert = !!dlgSpec;
+    sheetLocked = true;
+    applyLock();
   }
   function restoreFocus() {
     let t = openerSel ? document.querySelector(openerSel) : null;
@@ -6412,8 +6399,9 @@ const HBIO = (function () {
     flow = null; cur = null; isOpen = false;
     bodyEl.replaceChildren(); footEl.replaceChildren(); // nothing of the file stays in the page
     sheet.classList.remove('open');
-    lockPage(false);
-    document.removeEventListener('keydown', onKey, true);
+    panel.inert = false;
+    sheetLocked = false;
+    applyLock();
     renderCard(); // first: the opener button is rebuilt, then focus goes back to it
     restoreFocus();
   }
@@ -6423,7 +6411,18 @@ const HBIO = (function () {
     if (flow && cur.id === 'I2') flow.cancelled = true;
     closeSheet();
   }
+  // Tab stays inside the open layer. R5 and UF5 are the one place focus may leave (to the save bar's Retry).
+  function wrapTab(e) {
+    if (!dlgSpec && cur && (cur.id === 'R5' || cur.id === 'UF5')) return;
+    const box = dlgSpec ? dlgBox : panel;
+    const items = [...box.querySelectorAll('button,input,[tabindex="0"]')].filter((x) => !x.disabled && !x.hidden && !x.closest('[hidden],[inert]') && x.getClientRects().length > 0);
+    if (!items.length) return;
+    const first = items[0], lastEl = items[items.length - 1], a = document.activeElement;
+    if (e.shiftKey && (a === first || !box.contains(a) || a === titleEl)) { e.preventDefault(); lastEl.focus(); }
+    else if (!e.shiftKey && (a === lastEl || !box.contains(a))) { e.preventDefault(); first.focus(); }
+  }
   function onKey(e) {
+    if (e.key === 'Tab') return wrapTab(e);
     if (e.key !== 'Escape') return;
     e.preventDefault();
     e.stopPropagation();
@@ -6452,15 +6451,14 @@ const HBIO = (function () {
     sheet.setAttribute('aria-describedby', spec.desc || 'hb-io-desc');
     bodyEl.scrollTop = 0;
     titleEl.focus({ preventScroll: true });
+    liftToasts();
   }
   const para = (id, ...kids) => { const p = E('p', 'hb-io-p', ...kids); if (id) p.id = id; return p; };
-  const closeFoot = () => ({ label: C['io.btn.close'], on: () => closeSheet() });
 
   // Dialogs (I5, U1, U2): centred, above the sheet, initial focus on the safe button.
   // spec: {title, mk, body:[Node], extra:{label,on}, safe:fn, safeLabel, confirmLabel, confirm:fn}
   function openDialog(spec) {
     build();
-    const wasOpen = dlg.classList.contains('open');
     dlgSpec = spec;
     const tid = 'hb-io-dlg-title', bid = 'hb-io-dlg-desc';
     const h = E('h2', 'hb-io-title'); h.id = tid; h.tabIndex = -1;
@@ -6480,16 +6478,20 @@ const HBIO = (function () {
     dlgBox.setAttribute('aria-describedby', bid);
     dlgBox.replaceChildren(body, foot);
     dlg.classList.add('open');
-    if (!wasOpen) { if (isOpen) panel.inert = true; else lockPage(true); }
+    if (isOpen) panel.inert = true;
+    dlgLocked = true;
+    applyLock();
+    liftToasts();
     spec.safeBtn = safe;
     safe.focus({ preventScroll: true });
-    if (!isOpen) document.addEventListener('keydown', onKey, true);
   }
   function closeDialog() {
     if (!dlgSpec) return;
     dlgSpec = null;
     dlg.classList.remove('open');
-    if (isOpen) panel.inert = false; else { lockPage(false); document.removeEventListener('keydown', onKey, true); }
+    if (isOpen) panel.inert = false;
+    dlgLocked = false;
+    applyLock();
   }
 
   // ── refusal and failure states ──
@@ -6508,7 +6510,7 @@ const HBIO = (function () {
       if ((ctx.lines || []).length >= 20) body.push(para('', S('io.list.first20')));
     }
     if (ctx.extraBody) body.push(ctx.extraBody);
-    const foot = [closeFoot()];
+    const foot = []; // the header Close is the one Close (it comes right after the header in tab order)
     if (id === 'R5' || id === 'UF5') {
       foot.push({ label: C['io.btn.export'], primary: true, on: (b) => exportBackup(b, 'sheet') });
     } else if (id === 'M1' || id === 'M2') {
@@ -6607,7 +6609,9 @@ const HBIO = (function () {
   // ── pre-checks (synchronous: the picker must open inside the tap) ──
   function preCheck() {
     if (hbWorkoutActive()) return 'R1';
-    if (!window.HB || !hbLoadedOk) return 'R4';
+    // R4 only while the app is still starting; once the bar shows a read-only state (the store never came up) it is R2
+    if (!window.HB) return barShowing() ? 'R2' : 'R4';
+    if (!hbLoadedOk) return 'R4';
     let st;
     try { st = window.HB.storage.status(); } catch (e) { return 'R4'; }
     if (st.state === 'readonly') return quiet ? 'R2b' : 'R2';
@@ -6662,18 +6666,19 @@ const HBIO = (function () {
   function checkingSpec(file) {
     const big = file.size > 1024 * 1024;
     const body = [];
-    const readLine = para('hb-io-desc');
+    const readLine = para('');
     const bar = E('div', 'hb-io-prog'); bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100'); bar.setAttribute('aria-valuenow', '0');
     bar.setAttribute('aria-label', S('io.check.title'));
     const fillEl = E('div', 'hb-io-prog-fill'); bar.append(fillEl);
     const safeLine = para('', S('io.check.body'));
     if (big) {
+      readLine.id = 'hb-io-desc';
       readLine.textContent = S('io.check.reading', { read: '0.0', size: fmtMB(file.size) });
       body.push(readLine, bar, safeLine);
     } else {
-      readLine.textContent = S('io.check.parsing');
-      safeLine.hidden = true; readLine.hidden = true;
-      body.push(readLine, safeLine);
+      safeLine.id = 'hb-io-desc'; // a small file: only "Nothing has been changed", and only if checking takes a while
+      safeLine.hidden = true;
+      body.push(safeLine);
     }
     return { spec: { id: 'I2', title: S('io.check.title'), body, foot: [{ label: C['io.btn.cancel'], on: () => { if (flow) flow.cancelled = true; if (flow && flow.reader) { try { flow.reader.abort(); } catch (e) { /* done */ } } closeSheet(); } }], closeBusy: false }, readLine, bar, fillEl, safeLine, big };
   }
@@ -6683,7 +6688,7 @@ const HBIO = (function () {
     const ck = checkingSpec(file);
     setState(ck.spec);
     let t300 = 0;
-    if (!ck.big) t300 = setTimeout(() => { ck.readLine.hidden = false; ck.safeLine.hidden = false; }, 300);
+    if (!ck.big) t300 = setTimeout(() => { ck.safeLine.hidden = false; }, 300);
     const stale = () => fl.cancelled || flow !== fl;
     try {
       const blocked = await window.HB.io.canImport();
@@ -6700,9 +6705,9 @@ const HBIO = (function () {
         if (!half && pct >= 50) { half = true; say('50%'); }
       });
       if (stale()) return;
-      clearTimeout(t300);
-      ck.readLine.hidden = false; ck.readLine.textContent = S('io.check.parsing'); ck.safeLine.hidden = false;
-      if (ck.big) { ck.fillEl.style.width = '100%'; ck.bar.setAttribute('aria-valuenow', '100'); }
+      if (ck.big) {
+        ck.readLine.textContent = S('io.check.parsing'); ck.fillEl.style.width = '100%'; ck.bar.setAttribute('aria-valuenow', '100');
+      }
       await twoFrames(); // the "checking" text is painted before the page blocks on parsing
       if (stale()) return;
       const imp = await window.HB.io.importFile({ size: file.size, text: () => Promise.resolve(text) });
@@ -6710,9 +6715,10 @@ const HBIO = (function () {
       fl.imp = imp; fl.summary = imp.summary; fl.reader = null;
       showPreviewOrRefusal();
     } catch (e) {
-      clearTimeout(t300);
       if (stale() || (e && e.kind === 'cancelled')) return;
       showError(e);
+    } finally {
+      clearTimeout(t300);
     }
   }
   // Any error or kind from the import flow -> its state (10.1). Unknown shapes are write failures (W1/W2).
@@ -6813,7 +6819,7 @@ const HBIO = (function () {
     const mkOpt = (value, label, hint, extra) => {
       const input = E('input'); input.type = 'radio'; input.name = 'hb-io-mode'; input.value = value; input.checked = value === flow.mode;
       const lab = E('label', 'hb-io-opt');
-      const txt = E('div', 'hb-io-opt-t', E('div', 'hb-io-opt-name', extra || null, label), E('div', 'hb-io-detail', hint));
+      const txt = E('div', 'hb-io-opt-t', E('div', 'hb-io-dim', E('div', 'hb-io-opt-name', extra || null, label), E('div', 'hb-io-detail', hint)));
       lab.append(input, txt);
       return { input, lab, txt };
     };
@@ -6877,7 +6883,7 @@ const HBIO = (function () {
     const ul = E('ul', 'hb-io-rows');
     for (const p of sm.plans.items) {
       const d = num(p.days);
-      ul.append(E('li', 'hb-io-rowitem', E('div', 'hb-io-rowname', nameSpan(p.name, true)), E('div', 'hb-io-detail', S('io.plan.days', { n: fmtN(d) }, d) + ' · ' + S(p.present ? 'io.plan.present' : 'io.plan.new'))));
+      ul.append(E('li', 'hb-io-rowitem', E('div', 'hb-io-rowname', nameSpan(p.name)), E('div', 'hb-io-detail', S('io.plan.days', { n: fmtN(d) }, d) + ' · ' + S(p.present ? 'io.plan.present' : 'io.plan.new'))));
     }
     body.push(ul);
     if (total > sm.plans.items.length) body.push(para('', S('io.plan.more', { n: fmtN(total - sm.plans.items.length) })));
@@ -6900,7 +6906,7 @@ const HBIO = (function () {
     const mineList = countList(mineCounts(sm.current));
     openDialog({
       title: S('io.rep.title'),
-      body: [para('', F('io.rep.body', { mineList: mineList || '0', date: fmtDate(sm.file.exported) })), para('', S('io.rep.undoNote'))],
+      body: [para('', mineList ? F('io.rep.body', { mineList, date: fmtDate(sm.file.exported) }) : F('io.sum.replaceEmpty', { date: fmtDate(sm.file.exported) })), para('', S('io.rep.undoNote'))],
       safeLabel: C['io.btn.keepMine'], confirmLabel: C['io.btn.replaceConfirm'],
       safe: () => { closeDialog(); const p = $('hb-io-primary'); if (p) p.focus({ preventScroll: true }); },
       confirm: () => { closeDialog(); doApply('replace'); },
@@ -6936,11 +6942,20 @@ const HBIO = (function () {
   }
   async function doApply(mode) {
     const fl = flow;
+    if (!fl || fl.applying) return; // a double tap cannot start two applies
     fl.applying = true;
     const plans = mode === 'plans';
+    // I6 keeps the preview on screen, not tappable, with the "keep open" line above the footer (4.6)
+    const keep = [];
+    if (cur && (cur.id === 'I3' || cur.id === 'I3p')) {
+      const frozen = E('div'); frozen.inert = true;
+      frozen.append(...bodyEl.childNodes);
+      keep.push(frozen);
+    }
+    setBusy(true);
     setState({
       id: 'I6', title: S(plans ? 'io.plan.title' : 'io.prev.title'), desc: 'hb-io-desc', closable: false, closeBusy: true,
-      body: [para('hb-io-desc', S('io.apply.keepOpen'))],
+      body: [...keep, para('hb-io-desc', S('io.apply.keepOpen'))],
       foot: [{ label: C['io.btn.cancel'], busy: true, on: () => {} }, { label: plans ? C['io.btn.adding'] : C['io.btn.importing'], primary: true, busy: true, id: 'hb-io-primary', on: () => {} }],
     });
     say(S('io.apply.keepOpen'));
@@ -6949,11 +6964,13 @@ const HBIO = (function () {
       r = await fl.imp.apply({ mode });
     } catch (e) {
       fl.applying = false;
+      setBusy(false);
       if (flow === fl) showError(e);
       return;
     }
     // Same continuation as the store's result: state is replaced before any other tap can be handled.
     fl.applying = false;
+    setBusy(false);
     if (r.nothing) { showNothing(fl); return; }
     adoptState(r.doc);
     last = { imp: fl.imp, at: Date.now(), plans };
@@ -6994,6 +7011,7 @@ const HBIO = (function () {
     body.push(E('div', 'hb-io-undo-wrap', ub), para('', S('io.done.undoUntil')));
     const side = fl.plans ? sm.onlyPlans : mode === 'replace' ? sm.replace : sm.merge;
     if (side && side.mirrorStale) body.push(warnRow('warn', S('io.warn.mirror')));
+    say('');
     setState({
       id: 'I7', mk: 'ok', title: S(fl.plans ? 'io.plandone.title' : 'io.done.title'), desc: 'hb-io-desc', body,
       foot: [{ label: fl.plans ? C['io.btn.showPlans'] : C['io.btn.done'], primary: true, on: () => { closeSheet(); if (fl.plans) showMyPlans(); } }],
@@ -7002,8 +7020,8 @@ const HBIO = (function () {
   function showMyPlans() {
     try {
       mShowPage('plans');
-      const tabs = document.querySelectorAll('.plan-tab');
-      if (tabs[1]) mSwitchPlanTab('browse', tabs[1]);
+      const tab = document.querySelector('[data-plan-tab="browse"]');
+      if (tab) mSwitchPlanTab('browse', tab);
       mSwitchBrowseTab('mine');
     } catch (e) { /* the plans page is optional here */ }
   }
@@ -7032,7 +7050,12 @@ const HBIO = (function () {
       ? { mk: 'warn', title: S('io.undo2.title'), body: [para('', S('io.undo2.body', { time: when })), para('', S('io.undo2.copy'))], extra: { label: C['io.btn.export'], on: (b) => exportBackup(b, 'dialog') }, confirmLabel: C['io.btn.undoAnyway'] }
       : { title: S('io.undo.title'), body: [para('', S('io.undo.body', { time: when }))], confirmLabel: C['io.btn.undoConfirm'] };
     spec.safeLabel = C['io.btn.keepImport'];
-    spec.safe = () => { closeDialog(); const u = document.querySelector('[data-io="undo"]'); if (u) u.focus({ preventScroll: true }); };
+    spec.safe = () => {
+      closeDialog();
+      // the Undo button of the open sheet first (the card's is inside the inert page), then the opener
+      const u = (isOpen && bodyEl.querySelector('[data-io="undo"]')) || document.querySelector('[data-io="undo"]') || (undoOpener && undoOpener.isConnected ? undoOpener : null);
+      if (u) u.focus({ preventScroll: true });
+    };
     spec.confirm = () => { closeDialog(); doUndo(later); };
     if (!isOpen) opener = op || opener;
     openDialog(spec);
@@ -7046,15 +7069,17 @@ const HBIO = (function () {
       foot: [],
     });
     say(S('io.apply.keepOpen'));
-    quiet = true; barRefresh();
+    quiet = true; setBusy(true);
     try {
       await last.imp.undo({ acceptLater });
     } catch (e) {
-      quiet = false; barRefresh();
+      quiet = false; setBusy(false);
       showUndoError(e);
       return;
     }
+    setBusy(false);
     last = null; // the store is locked ('restored') until the app restarts
+    say('');
     setState({
       id: 'U4', mk: 'ok', title: S('io.undone.title'), desc: 'hb-io-desc', closable: false, noClose: true,
       body: [para('hb-io-desc', S('io.undone.body'))],
@@ -7086,19 +7111,21 @@ const HBIO = (function () {
     try { const st = window.HB.storage.status(); return st.state === 'readonly' && !quiet; } catch (e) { return !window.HB; }
   };
   const exportName = () => (partialNow() ? 'HomeBody_partial_' : 'HomeBody_') + todayISO() + '.vaultfit';
+  // Something else is on screen that must not be replaced (checking, applying, undoing, or a dialog): toasts only.
+  const midFlow = () => !!(dlgSpec || (isOpen && cur && (cur.closable === false || cur.id === 'I2')));
   function exportFailure(e, fromBar) {
-    const inWm = wmOpen();
+    const inWm = wmOpen() || midFlow();
     const kind = e && e.kind;
     if (kind === 'io-unavailable' || kind === 'io-skew' || !window.HB) {
       if (inWm) return note('io.x.failedWorkout', null, null, 'error', fromBar);
       const id = kind === 'io-skew' ? 'M2' : 'M1';
       let rawBtn = null;
       if (id === 'M1' && rawAvailable()) {
-        rawBtn = E('button', 'btn-secondary hb-io-wide'); rawBtn.type = 'button'; rawBtn.textContent = 'Export saved file';
+        rawBtn = E('button', 'btn-secondary hb-io-wide'); rawBtn.type = 'button'; rawBtn.textContent = C['io.btn.exportSaved'];
         rawBtn.addEventListener('click', () => rawExport(false));
       }
       const spec = stateSpec(id);
-      if (id === 'M1') { spec.body[0].textContent = S('io.m.loadExport'); if (rawBtn) spec.body.push(rawBtn); }
+      if (id === 'M1') { spec.title = S('io.m.loadExport.title'); spec.body[0].textContent = S('io.m.loadExport'); if (rawBtn) spec.body.push(rawBtn); }
       openSheet(null); setState(spec);
       return;
     }
@@ -7106,7 +7133,7 @@ const HBIO = (function () {
   }
   let exporting = false;
   async function exportBackup(btn, from) {
-    if (exporting) return;
+    if (exporting || quiet) return; // after an Undo the page still holds the undone state: nothing to export until Restart (K49)
     exporting = true;
     const fromBar = from === 'bar';
     const card = btn && btn.getAttribute && btn.getAttribute('data-io') === 'export' ? btn : null;
@@ -7116,7 +7143,7 @@ const HBIO = (function () {
       if (!window.HB || !window.HB.io) return exportFailure({ kind: 'io-unavailable' }, fromBar);
       let r;
       try { r = await window.HB.io.exportFile(exportPayload()); } catch (e) { return exportFailure(e, fromBar); }
-      const inWm = wmOpen();
+      const inWm = wmOpen() || midFlow();
       if (!r.ok) {
         if (r.reason === 'too-large') {
           if (inWm) return note('io.xc.toastWorkout', null, null, '', fromBar);
@@ -7124,7 +7151,7 @@ const HBIO = (function () {
           setState({
             id: 'X2', mk: 'bad', title: S('io.xc.title'), desc: 'hb-io-desc',
             body: [para('hb-io-desc', S('io.xc.body')), E('div', 'hb-io-warn', marker('info'), E('p', 'hb-io-p', S('io.health.short')))],
-            foot: [closeFoot(), { label: C['io.btn.saveText'], primary: true, on: () => saveFullText() }],
+            foot: [{ label: C['io.btn.saveText'], primary: true, on: () => saveFullText() }],
           });
           return;
         }
@@ -7158,17 +7185,11 @@ const HBIO = (function () {
     if (n >= 20) body.push(para('', S('io.list.first20')));
     setState({ id: 'X1', mk: 'warn', title: S('io.xw.title'), desc: 'hb-io-desc', body, foot: [{ label: C['io.btn.done'], primary: true, on: () => closeSheet() }] });
   }
-  function saveFullText() {
+  async function saveFullText() {
     try {
-      const p = { _vaultfit: true, _version: HBStorage.LATEST_SCHEMA, _exported: new Date().toISOString(), _containsHealthData: true };
-      if (partialNow()) {
-        let kindNow = 'unavailable';
-        try { kindNow = window.HB.storage.status().error || 'unavailable'; } catch (e) { /* default */ }
-        p._partial = true;
-        p._partialReason = kindNow === 'corrupt' ? 'unreadable' : kindNow === 'future' ? 'newer' : 'unavailable';
-      }
-      Object.assign(p, exportPayload());
-      download(JSON.stringify(p), 'HomeBody_full_' + todayISO() + '.txt', 'text/plain');
+      const r = await window.HB.io.exportFile(exportPayload(), { uncapped: true });
+      if (!r.ok) throw new Error('export');
+      download(r.text, 'HomeBody_full_' + todayISO() + '.txt', 'text/plain');
     } catch (e) { note('io.x.failed', null, null, 'error', false); return; }
     closeSheet();
     note('io.xc.toastSaved', null, null, 'success', false);
@@ -7209,7 +7230,7 @@ const HBIO = (function () {
     stack.append(E('div', 'hb-io-p hb-io-small', S('io.card.fileName', { file: exportName() })));
     if (hbWorkoutActive()) stack.append(E('div', 'hb-io-p hb-io-small', S('io.card.workoutNote')));
     if (ro && rawAvailable()) {
-      stack.append(mkBtn('btn-secondary', 'Export saved file', 'raw', () => rawExport(false)));
+      stack.append(mkBtn('btn-secondary', C['io.btn.exportSaved'], 'raw', () => rawExport(false)));
       stack.append(E('div', 'hb-io-p hb-io-small', S(st.mirror === 'stale' ? 'io.card.rawNoteStale' : 'io.card.rawNote')));
     }
     stack.append(mkBtn('btn-secondary', C['io.btn.import'], 'import', (b) => pickFile('full', b)));
@@ -7219,7 +7240,9 @@ const HBIO = (function () {
     const replay = E('button', 'btn-secondary hb-io-replay', 'Replay App Tutorial'); replay.type = 'button';
     replay.addEventListener('click', () => tutReplay());
     kids.push(E('div', 'hb-io-sep'), replay);
+    const had = mount.contains(document.activeElement) ? document.activeElement.getAttribute('data-io') : null;
     mount.replaceChildren(...kids);
+    if (had) { const t = mount.querySelector('[data-io="' + had + '"]'); if (t) t.focus({ preventScroll: true }); }
   }
 
   // ── store status changes: the card, the Reload hold, "Saved" while R5 / UF5 is open ──
@@ -7253,12 +7276,16 @@ const HBIO = (function () {
   return {
     init, renderCard, pickFile, exportBackup, rawExport, undoTap,
     isQuiet: () => quiet, exportName,
+    isBusy: () => busyApply,
+    // The save bar re-rendered while focus was inside it and a sheet is open: focus goes to the sheet title.
+    refocus: () => { if (!isOpen || !titleEl) return false; titleEl.focus({ preventScroll: true }); return true; },
   };
 })();
 function hbIoRenderCard() { HBIO.renderCard(); }
 window.hbIoQuiet = () => HBIO.isQuiet();
+window.hbIoBusy = () => HBIO.isBusy();
+window.hbIoRefocus = () => HBIO.refocus();
 function mExportData(btn, from) { return HBIO.exportBackup(btn instanceof Element ? btn : document.querySelector('[data-io="export"]'), from || 'card'); }
-function hbIoPick(kind, btn) { HBIO.pickFile(kind, btn); }
 
 // ─── WAKE LOCK ───
 // The Screen Wake Lock API requires a secure context (HTTPS or localhost).
@@ -7509,7 +7536,8 @@ function mStartWorkoutMode(day, planName) {
       trackType: e.trackType || 'reps',
       unilateral: isUnilateral,
       supersetGroup: e.supersetGroup || null,
-      sets: Array.from({ length: Math.min(100, Math.max(1, Math.floor(hbNum(e.sets)) || 1)) }, () => ({
+      sets: Array.from({ length: Math.min(100, Math.max(1, // 100: a sanity bound against a runaway file value, not a training claim
+           Math.floor(hbNum(e.sets)) || 1)) }, () => ({
         reps: e.trackType === 'time' ? 0 : hbNum(e.reps),
         time: e.trackType === 'time' ? hbNum(e.time) : 0,
         weight: hbNum(e.weight),
@@ -7523,7 +7551,7 @@ function mStartWorkoutMode(day, planName) {
 
   // Validate superset groups: flag set-count mismatches, never block the workout.
   // Pairing logic below always falls back gracefully to the shorter count.
-  const supersetSetCounts = {};
+  const supersetSetCounts = Object.create(null);
   exercises.forEach(ex => {
     if (!ex.supersetGroup) return;
     (supersetSetCounts[ex.supersetGroup] = supersetSetCounts[ex.supersetGroup] || []).push(ex.sets.length);
@@ -8098,7 +8126,7 @@ function wmConfirmAddExercise(name, equip) {
 
 function wmShowExInfo(name) {
   const ex = EXERCISES.find(e => e.name === name);
-  const info = EX_INSTRUCTIONS[name] || (ex ? getInstructions(ex) : null);
+  const info = hbOwn(EX_INSTRUCTIONS, name) || (ex ? getInstructions(ex) : null);
   const existing = document.getElementById('wm-ex-info-modal');
   if (existing) existing.remove();
   const modal = document.createElement('div');
@@ -8527,7 +8555,7 @@ if (screen.orientation && screen.orientation.lock) {
   const S = { load: null, main: null, phase: 'failed', wm: false, ok: false };
   let forceRow = false, userRetry = false, shownNow = false, alerted = false, lastH = 0, okTimer = 0, stillTimer = 0, wmFlag = false, prevHold = false;
   const wmOpen = () => !!document.getElementById('wm-overlay');
-  const hold = () => !!(S.main || (S.wm && wmOpen()));
+  const hold = () => !!(S.main || (S.wm && wmOpen()) || (window.hbIoBusy && window.hbIoBusy())); // an import or undo in progress also holds the update card
   window.hbSaveHold = hold;  // the update card and About Update/Reload wait while this is true
 
   // 10.2: after an Undo the store is locked on purpose ('restored'); the import sheet explains it, so the
@@ -8572,7 +8600,7 @@ if (screen.orientation && screen.orientation.lock) {
     if (!v) {
       if (shownNow) {
         shownNow = false; alerted = false; forceRow = false; statusEl.textContent = ''; alertEl.textContent = '';
-        if (bar.contains(document.activeElement)) {
+        if (bar.contains(document.activeElement) && !(window.hbIoRefocus && window.hbIoRefocus())) {
           const t = (wmOpen() && document.querySelector('.wm-finish-btn')) || document.querySelector('.nav-tab.active');
           if (t) t.focus({ preventScroll: true });
         }
@@ -8590,8 +8618,10 @@ if (screen.orientation && screen.orientation.lock) {
       const want = { retry: v.btns.includes('retry'), raw: v.btns.includes('raw'), export: v.btns.includes('export'), done: v.btns.includes('done') };
       const fb = document.activeElement;   // a focused button that is about to disappear: focus moves on, never to <body>
       if (bar.contains(fb) && ((fb === retryB && !want.retry) || (fb === exportB && !want.export) || (fb === rawB && !want.raw))) {
-        const t = (wmOpen() && document.querySelector('.wm-finish-btn')) || document.querySelector('.nav-tab.active');
-        if (t) t.focus({ preventScroll: true });
+        if (!(window.hbIoRefocus && window.hbIoRefocus())) {
+          const t = (wmOpen() && document.querySelector('.wm-finish-btn')) || document.querySelector('.nav-tab.active');
+          if (t) t.focus({ preventScroll: true });
+        }
       }
       retryB.hidden = !want.retry; rawB.hidden = !want.raw; exportB.hidden = !v.btns.includes('export'); doneB.hidden = !v.btns.includes('done');
       if (v.retry) { retryB.textContent = v.retry; if (v.retryOff) retryB.setAttribute('aria-disabled', 'true'); else retryB.removeAttribute('aria-disabled'); }

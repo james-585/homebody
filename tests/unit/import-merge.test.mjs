@@ -278,6 +278,20 @@ test('export: too large to restore is refused, never produced; records the impor
     { now: NOW },
   );
   assert.deepEqual([big.ok, big.reason], [false, 'too-large']);
+  // the "Save as text file" escape: the same header and content, no cap, nothing for the validator to say
+  const full = buildExport(
+    { workouts: [{ ...wk(1), notes: 'x'.repeat(21 * 1024 * 1024) }] },
+    { now: NOW, uncapped: true },
+  );
+  assert.equal(full.ok, true);
+  assert.equal(full.unchecked, true);
+  const head = JSON.parse(full.text);
+  const small = JSON.parse(buildExport({ workouts: [wk(1)] }, { now: NOW }).text);
+  assert.deepEqual(Object.keys(head), Object.keys(small), 'same header and key order as a normal export');
+  assert.equal(head._version, small._version);
+  assert.equal(head._containsHealthData, true);
+  assert.deepEqual(full.warnings, { refused: [], dropped: 0 });
+  assert.equal(buildExport({ workouts: [wk(1)] }, { now: NOW, uncapped: true }).unchecked, false);
   const odd = buildExport(
     { workouts: [wk(1, { name: 'a<b' })], profile: { name: 'x', extra: 1 } },
     { now: NOW },
@@ -363,7 +377,7 @@ test('summary carries every number the preview needs (the UI computes nothing)',
   });
   const plans = Array.from({ length: 25 }, (_, i) => ({
     id: i + 7,
-    name: `Plan ${i} ${'x'.repeat(60)}`,
+    name: `Plan ${i} ${'x'.repeat(150)}`,
     planDays: [{ name: 'D', exercises: [] }],
   }));
   const v = valid(
@@ -388,7 +402,8 @@ test('summary carries every number the preview needs (the UI computes nothing)',
   assert.equal(s.plans.total, 25);
   assert.equal(s.plans.items.length, 20, 'listed up to 20, in file order');
   assert.deepEqual([s.plans.items[0].present, s.plans.items[1].present], [true, false]);
-  assert.equal([...s.plans.items[0].name].length, 40);
+  // summarize cuts at 100 code points (like the profile name); the UI clips by grapheme and adds the ellipsis
+  assert.equal([...s.plans.items[0].name].length, 100);
   assert.equal(s.plans.items[0].days, 1);
   assert.equal(s.onlyPlans.plansAdded, 24);
   assert.ok(s.file.exported === null && s.file.dateRange.from && s.file.profileName);
