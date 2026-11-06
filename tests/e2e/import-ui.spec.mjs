@@ -33,7 +33,7 @@ test.describe('copy, card and mapping', () => {
     const copy = await page.evaluate(() => HB_IO_COPY);
     const spec = specCopy();
     // the labels of 6.4 and a few row names are in the spec as tables without keys
-    const own = /^io\.(path|why|row\.(workouts|prs|bodyMetrics|plans|favs|profile))/;
+    const own = /^io\.(btn\.exportSaved|path|why|row\.(workouts|prs|bodyMetrics|plans|favs|profile))/;
     for (const [key, v] of Object.entries(copy)) {
       if (own.test(key)) continue;
       expect(spec.has(key), `${key} is in the design doc`).toBe(true);
@@ -416,7 +416,7 @@ test.describe('import: preview, apply, Undo', () => {
     await expect(page.locator('#hb-io-sheet .hb-io-body')).toContainText(
       "You can't undo an import while a workout is in progress.",
     );
-    await page.locator('#hb-io-sheet .hb-io-foot button').click();
+    await page.locator('#hb-io-sheet .hb-io-close').click();
     await page.evaluate(() => localStorage.removeItem('hb_active_workout'));
     await page.reload();
     await page.waitForFunction(() => typeof state !== 'undefined' && !!window.HB);

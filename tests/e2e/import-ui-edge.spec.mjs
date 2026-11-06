@@ -29,6 +29,7 @@ import {
 const C = specCopy();
 const one = (key) => C.get(key)[0];
 const body = (page) => page.locator('#hb-io-sheet .hb-io-body');
+const closeX = (page) => page.locator('#hb-io-sheet .hb-io-close');
 const foot = (page) => page.locator('#hb-io-sheet .hb-io-foot button');
 const CORRUPT = '{"workouts": [oops';
 const FUTURE = JSON.stringify({
@@ -76,9 +77,9 @@ test.describe('A4: pre-checks refuse before the file picker', () => {
     await expect(page.locator('#hb-data-card')).toContainText('Your workout in progress');
     for (const kind of ['import', 'plans']) {
       await expectNoChooser(page, kind);
-      await expectState(page, 'io.r.workout.title', 'io.r.workout', ['Close']);
+      await expectState(page, 'io.r.workout.title', 'io.r.workout', []);
       await expect(body(page)).toHaveText(one('io.r.workout'));
-      await foot(page).click();
+      await closeX(page).click();
     }
   });
 
@@ -96,7 +97,7 @@ test.describe('A4: pre-checks refuse before the file picker', () => {
         await expectNoChooser(page, kind);
         await expect(title(page)).toHaveText(one('io.r.readonly.title'));
         await expect(body(page)).toHaveText(one(expectKey));
-        await foot(page).click();
+        await closeX(page).click();
       }
       expect(await page.evaluate(() => localStorage.getItem('vaultfit_v1'))).toBe(seed);
     });
@@ -113,11 +114,25 @@ test.describe('A4: pre-checks refuse before the file picker', () => {
     await expect(body(page)).toHaveText(one('io.r.fallback'));
   });
 
-  test('R4: not loaded (the storage script is missing)', async ({ appPage: page, siteURL }) => {
+  test('R2 not R4: the storage script never loaded and the bar says so', async ({
+    appPage: page,
+    siteURL,
+  }) => {
     await page.route('**/src/hb-storage.js', (r) => r.abort());
     await seedStorage(page, { vaultfit_v1: OLD_TEXT, hb_seen_guide: '1' });
     await page.goto(siteURL + 'index.html');
+    await expect(page.locator(BAR)).toBeVisible();
     await page.evaluate(() => window.mShowPage('profile'));
+    await expectNoChooser(page, 'import');
+    await expect(title(page)).toHaveText(one('io.r.readonly.title'));
+    await expect(body(page)).toHaveText(one('io.r.readonly'));
+  });
+
+  test('R4: while boot is still in progress (13.2)', async ({ appPage: page, siteURL }) => {
+    await openApp(page, siteURL);
+    await page.evaluate(() => {
+      hbLoadedOk = false;
+    });
     await expectNoChooser(page, 'import');
     await expect(title(page)).toHaveText(one('io.r.loading.title'));
     await expect(body(page)).toHaveText(one('io.r.loading'));
@@ -145,7 +160,7 @@ test.describe('A5, A6: a file that cannot be imported changes nothing', () => {
       const tk = key + '.title';
       await expect(title(page)).toHaveText(one(tk));
       await expect(body(page)).toHaveText(one(key));
-      await expect(foot(page)).toHaveText(['Close']);
+      await expect(foot(page)).toHaveCount(0);
       await unchanged(page, before);
     });
   }
@@ -285,7 +300,7 @@ test.describe('A7, A8, A9: modules, another tab, a failed write', () => {
     await chooseFile(page, mkDoc({ n: 1 }));
     await expect(title(page)).toHaveText(one('io.m.load.title'));
     await expect(body(page)).toHaveText(one('io.m.load'));
-    await expect(foot(page)).toHaveText(['Close', 'Reload']);
+    await expect(foot(page)).toHaveText(['Reload']);
     // the shipped import functions are gone
     for (const f of ['mConfirmImport', 'mShowImportConfirm', 'mImportPlanOnly', 'mImportData']) {
       expect(await page.evaluate((n) => typeof window[n], f)).toBe('undefined');
@@ -360,7 +375,7 @@ test.describe('A7, A8, A9: modules, another tab, a failed write', () => {
     await page.evaluate(() => window.__readRelease());
     await expect(title(page)).toHaveText(one('io.chg.title'));
     await expect(body(page)).toHaveText(one('io.chg.body'));
-    await expect(foot(page)).toHaveText(['Close', 'Check again']);
+    await expect(foot(page)).toHaveText(['Check again']);
     expect(await page.evaluate(() => state.workouts.length)).toBe(OLD.workouts.length); // nothing imported
     await foot(page).last().click();
     await expect(title(page)).toHaveText(one('io.prev.title'));
@@ -411,7 +426,7 @@ test.describe('A7, A8, A9: modules, another tab, a failed write', () => {
     await page.locator('#hb-io-primary').click();
     await expect(title(page)).toHaveText(one('io.w.title'));
     await expect(body(page)).toHaveText(one('io.w.quota'));
-    await expect(foot(page)).toHaveText(['Close', 'Try again']);
+    await expect(foot(page)).toHaveText(['Try again']);
     await setFault(page, { main: false });
     expect(await page.evaluate(() => state.workouts.length)).toBe(OLD.workouts.length);
     await unchanged(page, before);
@@ -517,7 +532,7 @@ test.describe('A20 to A23: imported text is data', () => {
     }, pn);
     for (const n of seg) expect(n).toBeLessThanOrEqual(40);
     expect(pn[1]).toBe('x'.repeat(40) + '…'); // 500 characters, clipped (the validator's cap for a name)
-    expect(pn[3]).toBe('👍🏽'.repeat(20) + '…'); // cut at 40 code points by the summary, never mid-emoji
+    expect(pn[3]).toBe('👍🏽'.repeat(40) + '…'); // 40 graphemes, never mid-emoji
     await page.locator('#hb-io-primary').click();
     await expect(title(page)).toHaveText('Plans added');
     // nothing ran, nothing was made, no attribute carries a name, no toast or log either
@@ -583,7 +598,7 @@ test.describe('A20 to A23: imported text is data', () => {
       };
     });
     expect(r.hits).toBe(baseline.hits); // the same elements as before the import: no new class or id
-    expect(r.sub).toBe(one('io.enum.unknown'));
+    expect(r.sub).toBe('Ready to train?'); // 13.1: the home subtitle never shows the token or the unknown label
     expect(r.badge).toContain(one('io.enum.unknown'));
   });
 });
@@ -686,7 +701,7 @@ test.describe('layout, focus, layers (A24 to A30)', () => {
       await expectNoChooser(page, kind);
       await expect(title(page)).toHaveText(one('io.r.unsaved.title'));
       await expect(body(page)).toHaveText(one('io.r.unsaved'));
-      await expect(foot(page)).toHaveText(['Close', 'Export backup']);
+      await expect(foot(page)).toHaveText(['Export backup']);
       if (kind === 'import') {
         // Export backup downloads the unsaved edit and R5 stays open
         const [dl] = await Promise.all([page.waitForEvent('download'), foot(page).last().click()]);
@@ -784,7 +799,10 @@ test.describe('layout, focus, layers (A24 to A30)', () => {
         expect(b.top).toBeGreaterThanOrEqual(0);
         expect(b.right).toBeLessThanOrEqual(info.vw + 1);
       }
-      if (vp.width === 375) expect(info.f[1].top).toBeGreaterThan(info.f[0].top); // stacked, primary lowest
+      // side by side (primary on the right) or stacked (primary lowest): never a wrapped label inside a button
+      if (Math.abs(info.f[1].top - info.f[0].top) < 2)
+        expect(info.f[1].left).toBeGreaterThan(info.f[0].left);
+      else expect(info.f[1].top).toBeGreaterThan(info.f[0].top);
       // a real tap at 85% across each footer button lands on that button (the FAB is under the scrim)
       const hits = await page.evaluate(() =>
         [...document.querySelectorAll('#hb-io-sheet .hb-io-foot button')].map((b) => {
@@ -1038,10 +1056,10 @@ test.describe('export outcomes (A3, A33, 5.2 to 5.5)', () => {
     await page.goto(siteURL + 'index.html');
     await expect(page.locator(BAR)).toBeVisible();
     await page.locator(`${BAR} button`, { hasText: 'Export this session' }).click();
-    await expect(title(page)).toHaveText(one('io.m.load.title'));
+    await expect(title(page)).toHaveText(one('io.m.loadExport.title'));
     await expect(body(page)).toContainText(one('io.m.loadExport'));
     await expect(body(page).getByRole('button', { name: 'Export saved file' })).toBeVisible();
-    await expect(foot(page)).toHaveText(['Close', 'Reload']);
+    await expect(foot(page)).toHaveText(['Reload']);
   });
 });
 
@@ -1079,7 +1097,7 @@ test.describe('A36, A38: Undo refusals and the save bar for deliberate locks', (
     await expect(title(page)).toHaveText(one('io.r.unsaved.title'));
     await expect(body(page)).toHaveText(one('io.uf.unsaved'));
     await expect(page.locator('#hb-io-dlg')).toBeHidden();
-    await expect(foot(page)).toHaveText(['Close', 'Export backup']);
+    await expect(foot(page)).toHaveText(['Export backup']);
     expect(await page.evaluate(() => state.workouts.length)).toBe(n);
     await setFault(page, { main: false });
     await page
@@ -1087,7 +1105,7 @@ test.describe('A36, A38: Undo refusals and the save bar for deliberate locks', (
       .click({ timeout: 1500 })
       .catch(() => {}); // or the store's own retry got there first
     await expect(body(page)).toContainText(one('io.uf.unsaved.nowSaved'));
-    await foot(page).first().click();
+    await closeX(page).click();
     await expect(page.locator('#hb-data-card .hb-io-undo-row')).toBeVisible(); // the row stays
   });
 
