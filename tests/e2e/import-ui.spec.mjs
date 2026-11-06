@@ -33,7 +33,8 @@ test.describe('copy, card and mapping', () => {
     const copy = await page.evaluate(() => HB_IO_COPY);
     const spec = specCopy();
     // the labels of 6.4 and a few row names are in the spec as tables without keys
-    const own = /^io\.(btn\.exportSaved|path|why|row\.(workouts|prs|bodyMetrics|plans|favs|profile))/;
+    const own =
+      /^io\.(btn\.exportSaved|path|why|row\.(workouts|prs|bodyMetrics|plans|favs|profile))/;
     for (const [key, v] of Object.entries(copy)) {
       if (own.test(key)) continue;
       expect(spec.has(key), `${key} is in the design doc`).toBe(true);
@@ -285,6 +286,7 @@ test.describe('import: preview, apply, Undo', () => {
       "Not available: this is a partial backup, so it could remove history that isn't in it.",
     );
     expect(await rep.getAttribute('aria-describedby')).toBe('hb-io-replace-why');
+    // force: Playwright treats a radio with aria-disabled as not actionable; a real tap on it must still do nothing
     await page.locator('.hb-io-opt-off').click({ force: true });
     await expect(rep).not.toBeChecked();
     await page.locator('#hb-io-sheet input[value=merge]').focus();

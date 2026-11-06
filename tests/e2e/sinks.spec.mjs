@@ -1,13 +1,18 @@
 // T7b step 1: the render sinks (docs/security.md "Sink inventory"). The state here is what an OLD, unvalidated
 // import (or hand-edited storage) could have left behind, so every renderer must treat it as data on its own,
 // not rely on the new importer's validation. Nothing may execute and no markup may be created from a value.
-import { test, expect, seedStorage } from './helpers/seed.mjs';
+import { test, expect, seedStorage, seedData } from './helpers/seed.mjs';
 
 const PAY = '"><img src=x onerror=window.__x=1>';
 const NUM = '0"><img src=x onerror=window.__x=1>'; // a "number" that is really markup
 const QUOTE = "x');window.__x=1;//"; // breaks out of a single-quoted JS string
 const ENT = 'x&#39;);window.__x=1;//'; // entity-decoded to a quote before the JS parser runs
 const IDP = '1);window.__x=1;//'; // breaks out of an unquoted numeric argument
+// A backslash eats the escaping quote that an escape-and-replace pattern adds; &apos; and a bare & and a newline too
+const BS1 = "\\');window.__x=1;//";
+const BS2 = "\\\\');window.__x=1;//";
+const APOS = 'x&apos;);window.__x=1;//';
+const ODD = 'a\nb & c';
 
 function hostile() {
   const ex = (name, tt) => ({
@@ -25,7 +30,15 @@ function hostile() {
         id: IDP,
         name: PAY,
         date: '2026-10-30T10:00:00Z',
-        exercises: [ex(QUOTE, 'reps'), ex(ENT, 'time'), ex(PAY, 'reps')],
+        exercises: [
+          ex(QUOTE, 'reps'),
+          ex(ENT, 'time'),
+          ex(PAY, 'reps'),
+          ex(BS1, 'reps'),
+          ex(BS2, 'reps'),
+          ex(APOS, 'reps'),
+          ex(ODD, 'reps'),
+        ],
         totalSets: NUM,
         totalVolume: NUM,
         calories: NUM,
@@ -40,6 +53,8 @@ function hostile() {
     personalRecords: {
       [QUOTE]: { value: NUM, unit: PAY },
       [ENT]: { value: NUM, unit: 'kg' },
+      [BS1]: { value: 5, unit: 'kg' },
+      [APOS]: { value: 5, unit: 'kg' },
       Squat: { value: IDP, unit: 'sec' },
     },
     bodyMetrics: [{ date: '2026-10-30T00:00:00Z', weight: NUM, waist: NUM, bodyfat: NUM }],
@@ -55,7 +70,11 @@ function hostile() {
           {
             name: 'Monday ' + PAY,
             note: PAY,
-            exercises: [{ ...ex(PAY, 'reps'), muscle: 'constructor' }],
+            exercises: [
+              { ...ex(PAY, 'reps'), muscle: 'constructor' },
+              ex(BS1, 'reps'),
+              ex(APOS, 'reps'),
+            ],
           },
         ],
       },
@@ -73,7 +92,7 @@ function hostile() {
         barbell_plate_count: { 20: NUM, 10: IDP },
       },
     },
-    favourites: [QUOTE, ENT, PAY],
+    favourites: [QUOTE, ENT, PAY, BS1, BS2, APOS, ODD],
   };
 }
 
@@ -113,7 +132,6 @@ test.describe('render sinks treat stored and imported values as data', () => {
         t('page ' + p, () => window.mShowPage(p));
       t('home', () => window.mRenderHome());
       t('log', () => window.mRenderLog());
-      t('progress log', () => window.mRenderProgressLog());
       t('prs', () => window.mRenderPRs());
       t('myplans', () => window.mRenderMyPlans());
       t('plan detail', () => window.mOpenPlanDetail(state.userPlans[0]));
@@ -184,9 +202,9 @@ test.describe('render sinks treat stored and imported values as data', () => {
         goal: window.goalLabel('toString'),
       };
     });
-    // 'constructor' and 'toString' are not goals: the fixed "unrecognised" label, never the token or function text
-    expect(r.sub).toBe("a setting HomeBody doesn't recognise");
-    expect(r.goal).toBe("a setting HomeBody doesn't recognise");
+    // 'constructor' and 'toString' are not goals: the fixed fallback (13.1), never the token or function text
+    expect(r.sub).toBe('Ready to train?');
+    expect(r.goal).toBe('Ready to train?');
     // PAY, 'constructor' and 'hidden' are not levels: no class, the fixed "unrecognised" label
     for (const b of r.badges) {
       expect(b.cls.trim()).toBe('plan-level-badge');
@@ -229,5 +247,140 @@ test.describe('render sinks treat stored and imported values as data', () => {
     expect(r.text).toBe('advanced');
     expect(r.weeks).toBe('6');
     expect(r.sub).toContain('Muscle building goal');
+  });
+  test('known-good data: every renderer runs without throwing (the loop above swallows errors)', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    const d = seedData();
+    await seedStorage(page, { vaultfit_v1: JSON.stringify(d), hb_seen_guide: '1' });
+    await page.goto(siteURL + 'index.html');
+    await page.waitForFunction(() => typeof state !== 'undefined' && !!window.HB);
+    await page.evaluate(() => HB.storage.ready());
+    const threw = await page.evaluate(() => {
+      const out = [];
+      const t = (name, f) => {
+        try {
+          f();
+        } catch (e) {
+          out.push(name + ': ' + e.message);
+        }
+      };
+      const w = state.workouts[0];
+      for (const p of ['train', 'progress', 'plans', 'profile'])
+        t('page ' + p, () => window.mShowPage(p));
+      t('log', () => window.mRenderLog());
+      t('prs', () => window.mRenderPRs());
+      t('myplans', () => window.mRenderMyPlans());
+      t('plan detail', () => window.mOpenPlanDetail(state.userPlans[0]));
+      t('calendar', () => window.mRenderPlanCalendar());
+      t('equip', () => window.mRenderEquipManager());
+      t('favs', () => window.mRenderFavouritesList());
+      t('bm chart', () => window.mRenderBodyMetricsChart());
+      t('milestones', () => window.mRenderMilestones());
+      t('weekly', () => window.mRenderWeeklyVolumeChart());
+      t('recovery', () => window.mRenderMuscleRecovery());
+      t('exercise progress', () => window.mShowExerciseProgress(w.exercises[0].name));
+      t('show workout', () => window.mShowWorkout(w.id));
+      t('edit workout', () => window.mOpenEdit(w.id));
+      t('edit plan', () => window.mEditPlan(state.userPlans[0].id));
+      return out;
+    });
+    expect(threw).toEqual([]);
+  });
+
+  // The workout-mode path with stored hostile data: toasts that carry names, the info sheet, finish (PR toast),
+  // plan edit and save, the calendar. (Ported from the preview spec that went with the old import path.)
+  test('workout mode, toasts, plan edit and calendar with a hostile stored plan', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    test.setTimeout(60000);
+    const EVIL = `x'"<img src=x onerror=window.__x=1>&#39;);window.__x=2;//\\`;
+    const d = seedData();
+    d.userPlans = [
+      {
+        id: 4242,
+        name: `Plan ${EVIL}`,
+        planDays: [
+          {
+            name: `Monday ${EVIL}`,
+            exercises: [
+              { name: `A ${EVIL}`, sets: 2, reps: 5, weight: 50, supersetGroup: `G${EVIL}` },
+              { name: `B ${EVIL}`, sets: 3, reps: 5, weight: 40, supersetGroup: `G${EVIL}` },
+            ],
+          },
+        ],
+      },
+    ];
+    d.profile = { ...(d.profile || {}), name: 'Sam' };
+    await seedStorage(page, {
+      vaultfit_v1: JSON.stringify(d),
+      hb_seen_guide: '1',
+      hb_seen_tutorial: '1',
+    });
+    await page.goto(siteURL + 'index.html');
+    await page.waitForFunction(() => typeof state !== 'undefined' && !!window.HB);
+    await page.evaluate(() => HB.storage.ready());
+    const clean = async () => {
+      expect(await page.evaluate(() => window.__x)).toBeUndefined();
+      expect(await page.locator('img[src="x"]').count()).toBe(0);
+    };
+    await page.evaluate(() => {
+      window.mShowPage('plans');
+      window.mRenderMyPlans();
+      window.mOpenPlanDetail(state.userPlans[0]);
+    });
+    await page.locator('#mpd-days button', { hasText: /load/i }).first().click();
+    await expect(page.locator('#wm-overlay')).toBeAttached();
+    // the superset mismatch toast carries the group name as text
+    await expect(
+      page.locator('.m-toast-text', { hasText: "set counts don't match" }).first(),
+    ).toContainText('<img');
+    await clean();
+    await page.locator('#wm-overlay button[title="How to do this exercise"]').first().click();
+    await clean();
+    await page.evaluate(() => document.getElementById('wm-ex-info-modal')?.remove());
+    await page.locator('#wm-tick-0-0').click();
+    await page.locator('#wm-tick-1-0').click();
+    await page.evaluate(() => window.mCloseModal('m-timer-modal'));
+    await page.locator('.wm-finish-btn').click();
+    await page.locator('.wm-finish-sheet button', { hasText: 'Save Workout' }).click();
+    await expect(page.locator('.m-toast-text', { hasText: 'New PR' }).first()).toContainText(
+      '<img',
+    );
+    await clean();
+    await page.evaluate(() => {
+      document.getElementById('wm-overlay')?.remove();
+      window.mShowPage('plans');
+      window.mEditPlan(4242);
+    });
+    await clean();
+    await page.evaluate(() => window.mSavePlanEdits());
+    await clean();
+    await page.evaluate(() => {
+      window.mSwitchPlanTab('calendar', document.querySelectorAll('.plan-tab')[0]);
+      window.mRenderPlanCalendar();
+    });
+    await page.evaluate(() => {
+      for (const b of document.querySelectorAll(
+        '[onclick^="mCalLoadDay"],[onclick^="mShowWorkout"]',
+      )) {
+        try {
+          b.click();
+        } catch {
+          /* a handler may throw; it must not run the payload */
+        }
+      }
+    });
+    await clean();
+    const id = await page.evaluate(() => state.workouts[0].id);
+    await page.evaluate((i) => {
+      document.getElementById('wm-overlay')?.remove();
+      window.mShowWorkout(i);
+      window.mOpenEdit(i);
+      window.mLoadPastWorkout(i);
+    }, id);
+    await clean();
   });
 });

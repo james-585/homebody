@@ -812,7 +812,7 @@ test.describe('layout, focus, layers (A24 to A30)', () => {
         }),
       );
       expect(hits).toEqual([true, true]);
-      await page.locator('#hb-io-sheet .hb-io-foot button').first().click();
+      await tap(page, page.locator('#hb-io-sheet .hb-io-foot button').first(), 0.85); // Cancel, by real touch
       await page.evaluate(() => window.mShowPage('profile'));
     }
   });

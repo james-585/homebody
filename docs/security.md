@@ -54,7 +54,7 @@ Requested once, after the first successful save whose payload contains at least 
 There is no CSP. Adopting one would need hashes or nonces for the inline boot script in `<head>` and the inline `onerror` attribute on the storage script tag (replace with `addEventListener`), plus the many inline handlers in `index.html` (K15, K20).
 
 ## Import path (T7a; the UI is T7b)
-Status: written by storage-sync-engineer, **reviewed by security-reviewer for T7a (PASS on cad6a9a, 2026-11-04); the T7b UI and sink fixes await review**. The only way a file reaches the data is `HB.io.importFile(file)` then `apply()`:
+Status: written by storage-sync-engineer, **reviewed by security-reviewer for T7a (PASS on cad6a9a, 2026-11-04) and for T7b (PASS on 62aca6f, 2026-11-05; review fixes pending re-check)**. The only way a file reaches the data is `HB.io.importFile(file)` then `apply()`:
 1. **Size before parse:** `file.size` over 20 MB (`IMPORT_MAX_BYTES`, equal to `LIMITS.maxBytes`, asserted by a test) is refused before `file.text()`; `validate` checks `text.length` again. A single leading BOM is stripped.
 2. **Parse in try**, no reviver. Top level must be a plain object with `_vaultfit === true`; `_version` an integer (absent counts as 1), above the app's schema refused; older versions are validated, lifted by the migration runner, and validated again.
 3. **Whitelist copy, every kept leaf checked** (`src/storage/validate.js`): values are copied by name into fresh objects (no `Object.assign`, no setters from parsed objects); unknown keys are dropped and counted, including `schemaVersion`, `seq`, `hbSeq` at any level and `_name`; dictionaries (`personalRecords`, `_progressionLog`, equipment) refuse `__proto__`, `constructor`, `prototype` and are built with `defineProperty`. Exact types for every field that reaches an unquoted `onclick` or a class name: workout ids safe integers, plan ids finite numbers in (0, 2^53], enums for trackType, PR unit and side, and a token rule for the display-only values (step 4), finite ranged numbers elsewhere. Dates: strict ISO-8601 regex then a window (2000-01-01 to now + 366 days; later than now + 1 day is counted as a warning); `Date.parse` is never used.
@@ -82,33 +82,44 @@ Render helpers (defined next to `escHtml`): `hbNum(v)` returns a finite number (
 
 | Sink (function, about line) | Value from state | Context | Before | Now |
 | --- | --- | --- | --- | --- |
-| `mRenderProgressLog` (2065) log rows | `e.name`; `e.sets/reps/time/weight`; `w.grade`; `w.id`; `w.calories`, `w.rpe` | T/DQ; T; T; H-N; T | name escaped; numbers, grade and ids raw (unsafe) | numbers through `hbNum`; `w.grade` through `escHtml`; `w.id` through `hbNum`; the name uses `data-name` + `this.dataset.name` (already) |
-| `mRenderLog` (3724) history rows | same fields plus `w.totalSets/duration/totalVolume` | T/DQ; T; H-N | numbers and ids raw (unsafe) | `hbNum` on every number and id |
-| `mRenderTodayAction` (2014, 2003) | `duration`, sets sum | T (innerHTML) / textContent | string concatenation reachable | `hbNum` |
-| `mRenderPRs` (2266) | personal-record key `ex`; `pr.value`, `pr.unit` | T; T; T | value and unit raw (unsafe) | key through `escHtml`; value through `hbNum`; unit only `kg`, `sec` or empty; 1RM from the coerced number |
-| `mRenderMilestones` (4903) | sums of `totalVolume`, `calories` | T | string concatenation raw (unsafe) | `hbNum` in the sums |
-| `mRenderWeeklyVolumeChart` (3836), `mRenderMuscleRecovery` (2310) | set sums | T, S | the weekly chart wrote the sum raw (unsafe) | `hbNum` in the sums |
-| `mRenderMyPlans` (4434) | `p.level` (C, T), `p.weeks` (T), `p.id` (H-N, twice), `e.muscle` (T, S, via a colour table), plan name and desc | C, T, H-N | level raw in class and text, id and weeks raw, `MC[e.muscle]` matched inherited keys such as `constructor` (unsafe) | `hbPlanLevel`; `hbNum` for weeks and ids; `hbOwn(MC, muscle)`; name and desc `escHtml` (T) |
-| `mOpenPlanDetail` (4492, 4495) | `plan.level`, `weeks`, `daysPerWeek`, set sum | C, T | raw | same fixes; `d.name`, `d.note`, exercise names `escHtml` (T); day buttons pass the index `i` (a loop integer) |
-| `mRenderPlanDayExerciseList` (4473) | `e.sets/time/reps/weight`; `supersetGroup`; names | T | numbers raw | `hbNum`; group and names `escHtml` |
-| `mRenderPlanCalendar` (4365) | `logged[0].id` | H-N | raw (unsafe) | `hbNum`; day names `escHtml`; `dow`/`i` are loop integers |
-| `mOpenEdit` (4561 to 4570) | `e.sets/reps/time/weight`; name | DQ; DQ | numbers raw in `value="..."` (unsafe) | `hbNum`; name `escHtml` (DQ, safe) |
-| `mEditPlan` (4960 to 4975) | `ex.sets/reps/weight`; names | DQ | numbers raw (unsafe) | `hbNum`; names and day names `escHtml` (DQ) |
-| `epRender` (5144) exercise progress | `ex.sets/reps/time/weight`; chart values | T, SVG attributes | raw table cells; a string value made `toFixed` throw | `hbNum` at the source of every value; the SVG attributes are computed numbers |
-| `mRenderBodyMetricsChart` (5730) | `m.weight` (T, DQ `title`) | T, DQ | raw (unsafe) | rows mapped through `hbNum` first; the `title` date comes from `toLocaleDateString` |
-| `mRenderFavouritesList` (5761) | favourite name | T; H-S twice | `onclick="f('${name.replace(/'/g,...)}')"` (unsafe: `&#39;` and `\` breakouts) | `data-name="${escHtml(name)}"` (DQ) and `onclick="f(this.dataset.name)"`; text through `escHtml` |
-| `mRenderEquipManager` (4677 to 4745) | profile equipment weights (T, H-N), plate counts (T) | T, H-N | raw (unsafe) | only finite numbers kept, `hbNum` on output; ids and labels come from `EQUIP_CATEGORIES` (constants) |
-| `mStartWorkoutMode` + `wmRenderExercise` (6413, 6529 to 6565) | plan exercise `sets/reps/time/weight` into set rows and `value="..."` | DQ | raw (unsafe) | `hbNum` at the source (the logging path itself is unchanged: same elements, same handlers, same taps); set count capped at 100; `wmShowExInfo(wmState.exercises[ei].name)` passes an index, the name is never in a handler string |
-| `mShowWorkout` (8030) | `e.sets/reps/time/weight`, names | T | numbers raw | `hbNum`; names `escHtml` |
-| `wmFinish` comparison (7145) | `weightDiff`, `repDiff` | T | numbers by subtraction | unchanged: subtraction always yields a number; the name goes through `escHtml` |
-| Grade card (5582) | `grade.letter`, `pct`, `scores` | T, S | computed by comparison and sums of constants | unchanged (derived from fixed branches, not echoing a field); `tagline`, names through `escHtml` |
-| `goalLabel` (1965), `hm-sub` | profile goal | textContent | object-literal lookup matched `constructor` and showed function text | `hbOwn` lookup; unknown tokens fall back to "Ready to train?" |
-| Plan generator, built-in plan cards (2169, 7919), exercise library (2135, 2701, 6958), chips, muscle grids, tutorial, milestone titles | `EXERCISES`, `PLANS`, `MILESTONES`, constants | any | not reachable from a file (code constants); their `onclick` strings use `.replace(/'/g, ...)`, which would be unsafe for attacker text but is applied only to constant names | unchanged; recorded so a later edit that feeds user text into them is caught (the sink test renders the user-plan and favourites paths) |
-| `mToast` (1133) | any string | textContent since the hotfix | n/a | safe for any string; the import UI passes only fixed strings and integers |
-| `mAddRow(name)` (2437), datalists | exercise names | DQ | `escHtml` | safe |
-| Superset divider and badge, plan day notes (4501) | `supersetGroup`, `d.note` | T | `escHtml` | safe (the validator also refuses markup in names; notes may contain `<`, shown as text) |
+| `mRenderProgressLog` log rows | `e.name`; `e.sets/reps/time/weight`; `w.grade`; `w.id`; `w.calories`, `w.rpe` | T/DQ; T; T; H-N; T | name escaped; numbers, grade and ids raw (unsafe) | numbers through `hbNum`; `w.grade` through `escHtml`; `w.id` through `hbNum`; the name uses `data-name` + `this.dataset.name` (already) |
+| `mRenderLog` history rows | same fields plus `w.totalSets/duration/totalVolume` | T/DQ; T; H-N | numbers and ids raw (unsafe) | `hbNum` on every number and id |
+| `mRenderTodayAction` | `duration`, sets sum | T (innerHTML) / textContent | string concatenation reachable | `hbNum` |
+| `mRenderPRs` | personal-record key `ex`; `pr.value`, `pr.unit` | T; T; T | value and unit raw (unsafe) | key through `escHtml`; value through `hbNum`; unit only `kg`, `sec` or empty; 1RM from the coerced number |
+| `mRenderMilestones` | sums of `totalVolume`, `calories` | T | string concatenation raw (unsafe) | `hbNum` in the sums |
+| `mRenderWeeklyVolumeChart`, `mRenderMuscleRecovery` | set sums | T, S | the weekly chart wrote the sum raw (unsafe) | `hbNum` in the sums |
+| `mRenderMyPlans` | `p.level` (C, T), `p.weeks` (T), `p.id` (H-N, twice), `e.muscle` (T, S, via a colour table), plan name and desc | C, T, H-N | level raw in class and text, id and weeks raw, `MC[e.muscle]` matched inherited keys such as `constructor` (unsafe) | `hbPlanLevel`; `hbNum` for weeks and ids; `hbOwn(MC, muscle)`; name and desc `escHtml` (T) |
+| `mOpenPlanDetail` | `plan.level`, `weeks`, `daysPerWeek`, set sum | C, T | raw | same fixes; `d.name`, `d.note`, exercise names `escHtml` (T); day buttons pass the index `i` (a loop integer) |
+| `mRenderPlanDayExerciseList` | `e.sets/time/reps/weight`; `supersetGroup`; names | T | numbers raw | `hbNum`; group and names `escHtml` |
+| `mRenderPlanCalendar` | `logged[0].id` | H-N | raw (unsafe) | `hbNum`; day names `escHtml`; `dow`/`i` are loop integers |
+| `mOpenEdit` | `e.sets/reps/time/weight`; name | DQ; DQ | numbers raw in `value="..."` (unsafe) | `hbNum`; name `escHtml` (DQ, safe) |
+| `mEditPlan` | `ex.sets/reps/weight`; names | DQ | numbers raw (unsafe) | `hbNum`; names and day names `escHtml` (DQ) |
+| `epRender` exercise progress | `ex.sets/reps/time/weight`; chart values | T, SVG attributes | raw table cells; a string value made `toFixed` throw | `hbNum` at the source of every value; the SVG attributes are computed numbers |
+| `mRenderBodyMetricsChart` | `m.weight` (T, DQ `title`) | T, DQ | raw (unsafe) | rows mapped through `hbNum` first; the `title` date comes from `toLocaleDateString` |
+| `mRenderFavouritesList` | favourite name | T; H-S twice | `onclick="f('${name.replace(/'/g,...)}')"` (unsafe: `&#39;` and `\` breakouts) | `data-name="${escHtml(name)}"` (DQ) and `onclick="f(this.dataset.name)"`; text through `escHtml` |
+| `mRenderEquipManager` | profile equipment weights (T, H-N), plate counts (T) | T, H-N | raw (unsafe) | only finite numbers kept, `hbNum` on output; ids and labels come from `EQUIP_CATEGORIES` (constants) |
+| `mStartWorkoutMode` + `wmRenderExercise` | plan exercise `sets/reps/time/weight` into set rows and `value="..."` | DQ | raw (unsafe) | `hbNum` at the source (the logging path itself is unchanged: same elements, same handlers, same taps); set count capped at 100; `wmShowExInfo(wmState.exercises[ei].name)` passes an index, the name is never in a handler string |
+| `mShowWorkout` | `e.sets/reps/time/weight`, names | T | numbers raw | `hbNum`; names `escHtml` |
+| `wmFinish` comparison | `weightDiff`, `repDiff` | T | numbers by subtraction | unchanged: subtraction always yields a number; the name goes through `escHtml` |
+| Grade card | `grade.letter`, `pct`, `scores` | T, S | computed by comparison and sums of constants | unchanged (derived from fixed branches, not echoing a field); `tagline`, names through `escHtml` |
+| `goalLabel`, `hm-sub` | profile goal | textContent | object-literal lookup matched `constructor` and showed function text | `hbOwn` lookup; unknown tokens fall back to "Ready to train?" |
+| Plan generator, built-in plan cards, exercise library, chips, muscle grids, tutorial, milestone titles | `EXERCISES`, `PLANS`, `MILESTONES`, constants | any | not reachable from a file (code constants); their `onclick` strings use `.replace(/'/g, ...)`, which would be unsafe for attacker text but is applied only to constant names | unchanged; recorded so a later edit that feeds user text into them is caught (the sink test renders the user-plan and favourites paths) |
+| `mToast` | any string | textContent since the hotfix | n/a | safe for any string; the import UI passes only fixed strings and integers |
+| `mAddRow(name)`, datalists | exercise names | DQ | `escHtml` | safe |
+| Superset divider and badge, plan day notes | `supersetGroup`, `d.note` | T | `escHtml` | safe (the validator also refuses markup in names; notes may contain `<`, shown as text) |
 | Import UI (T7b) | imported profile and plan names, counts | textContent / text nodes only | n/a | no `innerHTML`, attribute or handler ever receives an imported string (checked by A20 to A23: hostile names with `&#39;`, quotes, a 500-character name, a right-to-left name and a skin-tone emoji name; toast and console spies) |
-| `mRenderProgressLog` (2104) | as the history rows | T/DQ/H-N | fixed with the rest | unreachable today (`#m-progress-log-list` does not exist); the live history list is `mRenderLog` |
+| `mRenderProgressLog` | as the history rows | T/DQ/H-N | removed (it had no element to render into); the live history list is `mRenderLog` |
+
+**Sink inventory additions (T7b review round).** Sites are named by function, not line number (lines move).
+| Sink | Value from state | Context | Now |
+| --- | --- | --- | --- |
+| calorie estimate (`MET_VALUES[e.name]`), `getStrengthLevel` (`STRENGTH_STANDARDS[exName]`), `getInstructions` and `wmShowExInfo` (`EX_INSTRUCTIONS[name]`) | an exercise name from a file or old data | object key lookup | `hbOwn`: a name such as `constructor` or `__proto__` never reads an inherited property |
+| `mRenderPlanDayExerciseList` (`groupCounts`, `groupSeenPos`), `mStartWorkoutMode` (`supersetSetCounts`) | `supersetGroup` token | object key | `Object.create(null)` dictionaries; the token is shown only through `escHtml` |
+| favourites list (`mRenderFavouritesList`) | favourite name | DQ attribute `data-name` | `escHtml` then `this.dataset.name`; the test now includes backslash, `&apos;`, newline and bare `&` payloads and a mutant that restores escape-and-replace (it fails) |
+| `mToast` | any string, including plan and group names from the workout-mode toasts | textContent | covered by a stored-data workout-mode test (toasts, info sheet, finish, plan edit, calendar); it fails when `mToast` is reverted to `innerHTML` and when the string-based `wmShowExInfo` handler is restored |
+| `#hb-update` card | n/a | n/a | it waits while an import or undo is applying (`hbSaveHold` includes `hbIoBusy`), so Update cannot be tapped during I6 or U3 |
+
+Notes: after a successful Undo the page still holds the undone state, so export is blocked until Restart (`quiet`), and the card keeps its normal labels; recorded in K49.
 
 Verification: `tests/e2e/sinks.spec.mjs` seeds `vaultfit_v1` with a payload in every field above (markup, `'`, `&#39;` and `1);` breakouts in names, ids and numbers), runs every renderer, clicks the generated buttons and asserts that `window.__x` is undefined, no `img` exists, no `onerror`/`onload` attribute exists outside the shell, and no handler attribute carries the breakout. It fails on the pre-T7b `index.html` (checked) and passes now. Not covered by data: the built-in constants row above. Known leftover by design: records with a non-numeric id (only possible from old unvalidated data) no longer match their Edit/Delete buttons (the id is read as 0), which is the safe failure.
 

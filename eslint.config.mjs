@@ -94,6 +94,7 @@ export default [
         HB_IO_KIND_MAP: 'readonly',
         HB_IO_REASON_MAP: 'readonly',
         HB_IO_STATES: 'readonly',
+        HBIO: 'readonly',
         HTMLAnchorElement: 'readonly',
         mToast: 'readonly',
         FileReader: 'readonly',

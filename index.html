@@ -7277,6 +7277,8 @@ const HBIO = (function () {
     init, renderCard, pickFile, exportBackup, rawExport, undoTap,
     isQuiet: () => quiet, exportName,
     isBusy: () => busyApply,
+    // Test hooks (read-only views of the flow): the e2e specs drive every kind through the real state builders.
+    __test: { showError: (e) => showError(e), showUndoError: (e) => showUndoError(e), flowImp: () => (flow && flow.imp) || null },
     // The save bar re-rendered while focus was inside it and a sheet is open: focus goes to the sheet title.
     refocus: () => { if (!isOpen || !titleEl) return false; titleEl.focus({ preventScroll: true }); return true; },
   };

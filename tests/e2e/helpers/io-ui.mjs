@@ -78,7 +78,7 @@ export async function expectNoChooser(page, kind) {
   const on = () => (fired = true);
   page.on('filechooser', on);
   await io(page, kind).click();
-  await page.waitForTimeout(150);
+  await expect(sheet(page)).toBeVisible(); // the refusal is on screen: the picker did not open
   page.off('filechooser', on);
   expect(fired).toBe(false);
 }
@@ -213,3 +213,29 @@ export async function settled(page) {
     document.getAnimations().every((a) => a.playState === 'finished'),
   );
 }
+
+/** WCAG contrast ratio of an element's text colour against its first opaque background. */
+export const ratioOf = (page, sel) =>
+  page.evaluate((s) => {
+    const lum = (c) => {
+      const [r, g, b] = c
+        .match(/[\d.]+/g)
+        .slice(0, 3)
+        .map((v) => {
+          const x = v / 255;
+          return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+        });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const el = document.querySelector(s);
+    let bg = 'rgb(0,0,0)';
+    for (let e = el; e; e = e.parentElement) {
+      const c = getComputedStyle(e).backgroundColor;
+      if (c && !/rgba\(.*, 0\)|transparent/.test(c)) {
+        bg = c;
+        break;
+      }
+    }
+    const [x, y] = [lum(getComputedStyle(el).color), lum(bg)].sort((p, q) => q - p);
+    return (x + 0.05) / (y + 0.05);
+  }, sel);

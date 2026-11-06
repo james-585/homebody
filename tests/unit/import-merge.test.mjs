@@ -287,7 +287,11 @@ test('export: too large to restore is refused, never produced; records the impor
   assert.equal(full.unchecked, true);
   const head = JSON.parse(full.text);
   const small = JSON.parse(buildExport({ workouts: [wk(1)] }, { now: NOW }).text);
-  assert.deepEqual(Object.keys(head), Object.keys(small), 'same header and key order as a normal export');
+  assert.deepEqual(
+    Object.keys(head),
+    Object.keys(small),
+    'same header and key order as a normal export',
+  );
   assert.equal(head._version, small._version);
   assert.equal(head._containsHealthData, true);
   assert.deepEqual(full.warnings, { refused: [], dropped: 0 });
