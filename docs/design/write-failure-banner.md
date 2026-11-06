@@ -216,3 +216,9 @@ Run at 375x667, 390x844 and 430x932, dark and light, unless stated. Taps use rea
 - Update card and About Update/Reload wait while the bar is in states 1 to 3b or 5 (Q1). About's row is hidden during the hold.
 - Light theme uses a lighter shadow (`0 6px 20px rgba(0,0,0,0.18)`).
 
+
+## Amendment 2026-11-04 (James, in chat; T7b, K30)
+- **States 6, 7 and 8:** the plain export button's label changes from `Export` to `Export this session`, because in those states it exports only what HomeBody holds this session (a partial backup, filename `HomeBody_partial_<YYYY-MM-DD>.vaultfit`). `Export saved file` is unchanged. States 2 and 4 keep `Export`. After a partial export the bar's polite status region receives `Partial backup saved: only what HomeBody has this session. Keep the file private.`, and after `Export saved file` it receives `Saved file downloaded. It holds your health data. Keep it private.` Source and checks: docs/design/import-preview.md (5.3, 5.5, A3). The rest of this approved spec is unchanged.
+
+## Amendment 2026-11-04 (James, in chat; T7b): no bar for deliberate locks
+- The bar does **not** show a read-only state (6, 7 or 8) when the store's read-only kind is `restored`, `restoring` or `importing`. These locks are deliberate (an import or Undo in progress, or an Undo that needs a restart) and the import sheet explains them. Nothing is announced (alert and status regions untouched), `hb-save-on` is not set and `--hb-bar-h` stays `0px`. Every other read-only kind (`corrupt`, `future`, `unavailable`, `stale`) still shows states 6, 7, 8 as approved, and a bar already on screen is never removed by this rule. Contract and check: docs/design/import-preview.md 10.2 and A38.

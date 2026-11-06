@@ -48,6 +48,15 @@ export default [
     },
   },
   {
+    // Lazily loaded ES modules (T7): pure, no browser globals needed.
+    files: ['src/storage/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2024,
+      sourceType: 'module',
+      globals: { TextEncoder: 'readonly' },
+    },
+  },
+  {
     // Code passed to page.evaluate runs in the browser against the app's classic-script globals.
     files: ['tests/e2e/**/*.mjs'],
     languageOptions: {
@@ -78,6 +87,20 @@ export default [
         requestAnimationFrame: 'readonly',
         performance: 'readonly',
         persistSave: 'readonly',
+        // T7b: the import/export UI specs
+        mShowPage: 'readonly',
+        HBStorage: 'readonly',
+        HB_IO_COPY: 'readonly',
+        HB_IO_KIND_MAP: 'readonly',
+        HB_IO_REASON_MAP: 'readonly',
+        HB_IO_STATES: 'readonly',
+        HBIO: 'readonly',
+        HTMLAnchorElement: 'readonly',
+        mToast: 'readonly',
+        FileReader: 'readonly',
+        File: 'readonly',
+        Blob: 'readonly',
+        Event: 'readonly',
       },
     },
   },
