@@ -1,6 +1,6 @@
 # Import preview, confirm, Undo and export labelling (T7b)
 
-Status: **Approved by james585 on 2026-11-04, in chat.** Amendments 13.1 to 13.4 (T7b review: home goal subtitle, R4 versus R2, toast placement, A21) approved by james585 on 2026-11-06, in chat; 13.5 and 13.6 record the designer's T7b review rulings; 13.7 is a Draft that needs James's approval. Answers: Q1 the too-large backup saves the full export as `HomeBody_full_<YYYY-MM-DD>.txt`, labelled not importable today; Q2 the save bar's `Export` reads `Export this session` in states 6 to 8 (K30; amends write-failure-banner.md, see its dated amendment); Q3 Undo lasts until reload; Q4 the user taps Restart after Undo, no automatic reload; Q5 the import sheet and dialogs sit at z 9800, above the FAB; Q6 plans-only imports also get Undo; Q7 problem lists show positions only, never values. Section 12 (Addendum: refusal R5 "Not saved yet", the matching Undo refusal UF5 and the T7b handoff rules) approved by james585 on 2026-11-04, in chat: R5 as written, and Undo also refuses when changes are not saved. Kind mapping additions (R2 `stale`, R2b `restored`, UF2b, F9, their copy and check A37) and the rule that hides the save bar for the `restored`, `restoring` and `importing` read-only states (10.2, A38) approved by james585 on 2026-11-04, in chat. Author: product-designer, 2026-11-03. Branch `claude/t7-import-preview-spec`.
+Status: **Approved by james585 on 2026-11-04, in chat.** Amendments 13.1 to 13.4 (T7b review: home goal subtitle, R4 versus R2, toast placement, A21) approved by james585 on 2026-11-06, in chat; 13.5 and 13.6 record the designer's T7b review rulings; 13.7 (health label wording, XM1 title) approved by james585 on 2026-11-06, in chat. Answers: Q1 the too-large backup saves the full export as `HomeBody_full_<YYYY-MM-DD>.txt`, labelled not importable today; Q2 the save bar's `Export` reads `Export this session` in states 6 to 8 (K30; amends write-failure-banner.md, see its dated amendment); Q3 Undo lasts until reload; Q4 the user taps Restart after Undo, no automatic reload; Q5 the import sheet and dialogs sit at z 9800, above the FAB; Q6 plans-only imports also get Undo; Q7 problem lists show positions only, never values. Section 12 (Addendum: refusal R5 "Not saved yet", the matching Undo refusal UF5 and the T7b handoff rules) approved by james585 on 2026-11-04, in chat: R5 as written, and Undo also refuses when changes are not saved. Kind mapping additions (R2 `stale`, R2b `restored`, UF2b, F9, their copy and check A37) and the rule that hides the save bar for the `restored`, `restoring` and `importing` read-only states (10.2, A38) approved by james585 on 2026-11-04, in chat. Author: product-designer, 2026-11-03. Branch `claude/t7-import-preview-spec`.
 Plan: docs/plans/m1/T7.md (approved 2026-11-03). Related: docs/design/write-failure-banner.md (approved; bar patterns, live regions, push rule), docs/design/update-notice.md (update card), docs/design/design-system.md and tokens.json on `claude/design-system-m2` (proposal; tokens, components, z-scale), docs/security.md.
 Principles: 1 (Merge default, Replace explicit, snapshot, Undo), 2 (calm, plain, no claims), 4 (exports are labelled as health data), 5 (works offline; nothing interrupts a workout), 7 (the logging path is not touched), 8 (imported text is data: text nodes only).
 
@@ -87,8 +87,8 @@ Replaces the card at index.html ~691-706. Same position in Profile. The `Replay 
 |                                             |
 | (i) Backups hold your health data, such as  |  info row: --surface2 fill,
 |     body measurements. Keep them private.   |  1px --border, i marker,
-|     They stay on your device unless you     |  Inter 0.875rem, --text
-|     share them.                             |
+|     HomeBody never uploads them, but your   |  Inter 0.875rem, --text
+|     phone may back up or sync your files.   |
 |                                             |
 | +-----------------------------------------+ |
 | |            EXPORT BACKUP                | |  .btn-primary, 48px, full width
@@ -532,7 +532,7 @@ Title `io.xc.title`, body `io.xc.body`, health line `io.health.short`, primary `
 ### 5.6 Export failures
 | ID | When | Shown | Copy |
 | --- | --- | --- | --- |
-| XM1 | module failed to load | sheet, as M1 | `io.m.load.title` / `io.m.loadExport`; footer: Close, Reload (primary); body also offers `Export saved file` as a secondary full-width button in the body when `vaultfit_v1` is readable |
+| XM1 | module failed to load | sheet, as M1 | `io.m.loadExport.title` / `io.m.loadExport` (title amended 2026-11-06, 13.7); footer: Close, Reload (primary); body also offers `Export saved file` as a secondary full-width button in the body when `vaultfit_v1` is readable |
 | XM2 | version skew | sheet, as M2 | `io.m.skew.title` / `io.m.skew`; Close, Reload |
 | XF | anything else (download could not start) | toast + status | `io.x.failed` |
 During an open workout layer XM1 and XM2 are toasts only: `io.x.failedWorkout`.
@@ -546,7 +546,7 @@ During an open workout layer XM1 and XM2 are toasts only: `io.x.failedWorkout`.
 | --- | --- |
 | `io.card.title` | `Data & Backup` (existing title, kept) |
 | `io.card.intro` | `Keep a copy of your workouts, records, plans and profile in a file. You can bring it back on this phone or another one.` |
-| `io.health.label` | `Backups hold your health data, such as body measurements. Keep them private. They stay on your device unless you share them.` |
+| `io.health.label` | `Backups hold your health data, such as body measurements. Keep them private. HomeBody never uploads them, but your phone may back up or sync your files.` (amended 2026-11-06, 13.7) |
 | `io.health.short` | `It holds your health data. Keep it private.` |
 | `io.card.fileName` | `File name: {file}` |
 | `io.card.importNote` | `Before anything changes you'll see what will happen, and you can undo an import.` |
@@ -714,6 +714,7 @@ The validator returns at most 20 problems. If 20 are shown, add `io.list.first20
 | `io.enum.unknown` *(12)* | `a setting HomeBody doesn't recognise` |
 | `io.m.load.title` | `Import isn't available right now` |
 | `io.m.load` | `Part of HomeBody didn't load. Reload HomeBody, then try again. Nothing was changed.` |
+| `io.m.loadExport.title` | `Can't make a backup right now` (added 2026-11-06, 13.7) |
 | `io.m.loadExport` | `Part of HomeBody didn't load, so it can't make a backup. Reload HomeBody, then try again. Nothing was changed.` |
 | `io.m.skew.title` | `HomeBody needs to reload` |
 | `io.m.skew` | `An update arrived while HomeBody was open. Reload to finish it, then try again. Nothing was changed.` |
@@ -1060,7 +1061,7 @@ Decisions (James, 2026-11-04, in chat):
 
 ## 13. Amendments 2026-11-06 (T7b design review of `claude/m1-t7-import` at 62aca6f)
 
-Status: 13.1 to 13.4 **approved by james585 on 2026-11-06, in chat**. 13.5 and 13.6 are the designer's review rulings within the approved spec (no new copy). 13.7 is **Draft - needs James's approval**.
+Status: 13.1 to 13.4 **approved by james585 on 2026-11-06, in chat**. 13.5 and 13.6 are the designer's review rulings within the approved spec (no new copy). 13.7 **approved by james585 on 2026-11-06, in chat**.
 
 ### 13.1 Home goal subtitle keeps "Ready to train?" (approved 2026-11-06)
 - Clarifies 12.3, section 10 ("Unrecognised setting values") and A35c: `io.enum.unknown` is for **setting labels** (the plan level badge, profile fields such as goal, sex and activity). It is not used in the home greeting.
@@ -1113,23 +1114,19 @@ The re-review passes when each item holds at 375x667 and 390x844, dark and light
 
 Polish, not blocking: the `How to import` legend gets 16 px above it; the header `Close` is vertically centred on the title row; `io.enum.unknown` and `Export saved file` are read from the copy tables, not literals.
 
-### 13.7 Health label and XM1 title (Draft - needs James's approval)
-Source: security review LOW 4. `io.health.label` says backups "stay on your device unless you share them", but the phone may sync or back up its Downloads folder (iCloud Drive, Google or Android backup), so that is not always true.
+### 13.7 Health label and XM1 title (approved by james585 on 2026-11-06, in chat)
+Source: security review LOW 4. The old health label said backups "stay on your device unless you share them", but the phone may sync or back up its Downloads folder (iCloud Drive, Google or Android backup), so that was not always true.
 
-Proposed copy (smallest accurate change):
-| Key | Now | Proposed |
-| --- | --- | --- |
-| `io.health.label` | `Backups hold your health data, such as body measurements. Keep them private. They stay on your device unless you share them.` | `Backups hold your health data, such as body measurements. Keep them private. HomeBody never uploads them, but your phone may back up or sync your files.` |
-| `io.health.short` | `It holds your health data. Keep it private.` | Unchanged: it makes no claim about where the file goes. |
+Changes (applied in section 6 and every place that quoted the old text: the 3.1 wireframe and the 5.6 XM1 row):
+- io.health.label now reads: "Backups hold your health data, such as body measurements. Keep them private. HomeBody never uploads them, but your phone may back up or sync your files." The old last sentence ("They stay on your device unless you share them.") is removed.
+- io.health.short is unchanged ("It holds your health data. Keep it private."): it makes no claim about where the file goes.
+- New key io.m.loadExport.title: "Can't make a backup right now". The XM1 export-failure sheet uses it with the body io.m.loadExport (which already says part of HomeBody didn't load). XM1 no longer reuses io.m.load.title ("Import isn't available right now"), which stays for M1 (import) only. Marker (circle !), footer and buttons are unchanged.
 
-Other strings checked: `io.card.rawNote`, `io.card.rawNoteStale`, `io.x.toast`, `io.xp.toast`, `io.xc.toastSaved` and `io.raw.toast` only say "Keep it private" and are unaffected. `io.rep.undoNote`, `io.done.copyKept` and `io.undo2.copy` refer to the pre-import copy that HomeBody keeps in its own storage on this device, which is accurate.
+Other strings checked and unaffected: io.card.rawNote, io.card.rawNoteStale, io.x.toast, io.xp.toast, io.xc.toastSaved and io.raw.toast only say "Keep it private". io.rep.undoNote, io.done.copyKept and io.undo2.copy refer to the pre-import copy HomeBody keeps in its own storage on this device, which is accurate.
 
-XM1 title. XM1 (export: the module failed to load) reuses `io.m.load.title` `Import isn't available right now`, which is wrong for an export. New key:
-| Key | Proposed | Note |
-| --- | --- | --- |
-| `io.m.loadExport.title` | `Can't make a backup right now` | Recommended. The body `io.m.loadExport` already begins "Part of HomeBody didn't load, so it can't make a backup", so this title avoids repeating it. |
-| (alternative) | `Part of HomeBody didn't load` | Only if James prefers the cause in the title; the body would then start "HomeBody can't make a backup. Reload HomeBody, then try again. Nothing was changed." |
-In 5.6 the XM1 row would use `io.m.loadExport.title` / `io.m.loadExport`. The marker stays the circle `!`; footer and buttons unchanged.
+Keys in this subsection are written without code formatting on purpose: section 6 is the single copy table that HB_IO_COPY is compared against.
+
+Check: A1 expects the new io.health.label text; an XM1 test (module blocked, Export tapped) expects the title io.m.loadExport.title.
 
 ## Approval
-Approved by james585 on 2026-11-04, in chat (answers in section 11). Amendments 13.1 to 13.4 approved by james585 on 2026-11-06, in chat; 13.7 is a Draft that needs James's approval.
+Approved by james585 on 2026-11-04, in chat (answers in section 11). Amendments 13.1 to 13.4 and 13.7 approved by james585 on 2026-11-06, in chat.
