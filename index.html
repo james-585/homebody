@@ -6350,9 +6350,13 @@ const HBIO = (function () {
     if (want) document.addEventListener('keydown', onKey, true); else document.removeEventListener('keydown', onKey, true);
   }
   // 13.3: while the sheet or a dialog is open the toasts sit at least 12 px above the footer or the dialog's buttons
-  function liftToasts() {
+  let liftTimer = 0;
+  function liftToasts(again) {
     const root = document.documentElement;
+    clearTimeout(liftTimer);
     if (!(sheetLocked || dlgLocked)) { root.style.removeProperty('--hb-io-toast-bottom'); return; }
+    // The sheet slides in with a transform, which the ResizeObserver does not see: measure once more after the slide.
+    if (!again) liftTimer = setTimeout(() => liftToasts(true), 400);
     let px = 0;
     if (dlgLocked && dlgBox) { const f = dlgBox.querySelector('.hb-io-dlg-foot'); if (f) px = window.innerHeight - f.getBoundingClientRect().top; }
     else if (footEl && !footEl.hidden) px = window.innerHeight - (busyEl && !busyEl.hidden ? busyEl : footEl).getBoundingClientRect().top;
