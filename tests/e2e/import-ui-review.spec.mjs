@@ -409,7 +409,9 @@ test.describe('layers, focus, toasts, held applies', () => {
     await expect(page.locator('#hb-io-primary')).toHaveText('Importing…');
     await expect(body(page)).toContainText('Adds 2 workouts');
     await expect(page.locator('#hb-io-sheet .hb-io-busyline')).toHaveText(one('io.apply.keepOpen'));
-    expect(await page.locator('#hb-io-sheet .hb-io-body').innerText()).not.toContain(one('io.apply.keepOpen'));
+    expect(await page.locator('#hb-io-sheet .hb-io-body').innerText()).not.toContain(
+      one('io.apply.keepOpen'),
+    );
     expect(
       await page.evaluate(
         () => document.querySelector('#hb-io-sheet .hb-io-body [inert]') !== null,
@@ -447,6 +449,128 @@ test.describe('layers, focus, toasts, held applies', () => {
     await page.evaluate(() => window.mExportData());
     await expect(page.locator('#hb-io-sheet')).toBeVisible();
     expect(dl).toBe(0);
+  });
+
+  test('the toast lift follows the footer when it re-flows (Replace at 200% text)', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await openApp(page, siteURL);
+    await page.addStyleTag({ content: 'html{font-size:200% !important}' });
+    await previewOf(page, REAL_TEXT);
+    await settled(page);
+    await page.evaluate(() => window.mToast('Layout check toast', ''));
+    await page.locator('.hb-io-opt', { hasText: 'Replace my data' }).click(); // the footer label gets longer and may stack
+    await settled(page);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const f = document.querySelector('#hb-io-sheet .hb-io-foot').getBoundingClientRect().top;
+          return [...document.querySelectorAll('.m-toast.show')].every(
+            (e) => e.getBoundingClientRect().bottom <= f - 11,
+          );
+        }),
+      )
+      .toBe(true);
+  });
+
+  test('R5: Tab cycles through the bar and the sheet and never lands on the body', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await injectFaults(page);
+    await openApp(page, siteURL);
+    await setFault(page, { main: true });
+    await page.evaluate(() => {
+      state.workouts.unshift({
+        id: 4242,
+        name: 'U',
+        date: new Date().toISOString(),
+        exercises: [],
+      });
+      persistSave();
+    });
+    await io(page, 'import').click();
+    await expect(title(page)).toHaveText(one('io.r.unsaved.title'));
+    await page.locator('#hb-io-sheet .hb-io-foot button').focus(); // Export backup, the last control
+    for (let i = 0; i < 6; i++) {
+      await page.keyboard.press('Tab');
+      expect(
+        await page.evaluate(
+          () =>
+            document.activeElement !== document.body &&
+            (!!document.activeElement.closest('#hb-save') ||
+              !!document.activeElement.closest('#hb-io-sheet')),
+        ),
+      ).toBe(true);
+    }
+    for (let i = 0; i < 6; i++) {
+      await page.keyboard.press('Shift+Tab');
+      expect(
+        await page.evaluate(
+          () =>
+            document.activeElement !== document.body &&
+            (!!document.activeElement.closest('#hb-save') ||
+              !!document.activeElement.closest('#hb-io-sheet')),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  test('Save as text file cannot download twice on a double tap', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await openApp(page, siteURL);
+    await page.evaluate(() => {
+      state.workouts = Array.from({ length: 30 }, (_, i) => ({
+        id: i + 1,
+        name: 'w',
+        date: '2026-10-01T00:00:00.000Z',
+        exercises: [],
+        notes: 'x'.repeat(800000),
+      }));
+    });
+    await io(page, 'export').click();
+    await expect(title(page)).toHaveText(one('io.xc.title'));
+    let n = 0;
+    page.on('download', () => n++);
+    const b = page.locator('#hb-io-sheet .hb-io-foot button');
+    await b.dblclick();
+    await expect(page.locator('#hb-io-sheet')).toBeHidden();
+    await page.waitForTimeout(300);
+    expect(n).toBe(1);
+  });
+
+  test('R5 at 812x375 and 200% text keeps at least two lines of body above the footer', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await injectFaults(page);
+    await openApp(page, siteURL);
+    await page.addStyleTag({
+      content: 'html{font-size:200% !important}.toast-container{display:none}',
+    });
+    await page.setViewportSize({ width: 812, height: 375 });
+    await setFault(page, { main: true });
+    await page.evaluate(() => {
+      state.workouts.unshift({
+        id: 4242,
+        name: 'U',
+        date: new Date().toISOString(),
+        exercises: [],
+      });
+      persistSave();
+    });
+    await io(page, 'import').click();
+    await expect(title(page)).toHaveText(one('io.r.unsaved.title'));
+    await settled(page);
+    const lines = await page.evaluate(() => {
+      const b = document.querySelector('#hb-io-sheet .hb-io-body');
+      const lh = parseFloat(getComputedStyle(b.querySelector('p')).lineHeight);
+      return b.clientHeight / lh;
+    });
+    expect(lines).toBeGreaterThanOrEqual(2);
   });
 
   test('the card keeps focus when it is rebuilt', async ({ appPage: page, siteURL }) => {

@@ -308,6 +308,9 @@ test.describe('render sinks treat stored and imported values as data', () => {
             exercises: [
               { name: `A ${EVIL}`, sets: 2, reps: 5, weight: 50, supersetGroup: `G${EVIL}` },
               { name: `B ${EVIL}`, sets: 3, reps: 5, weight: 40, supersetGroup: `G${EVIL}` },
+              // names with no double quote, so a string-based info handler would break out cleanly
+              { name: 'C x&#39;);window.__x=3;//', sets: 2, reps: 5, weight: 30 },
+              { name: "D \\');window.__x=3;//", sets: 2, reps: 5, weight: 30 },
             ],
           },
         ],
@@ -341,6 +344,12 @@ test.describe('render sinks treat stored and imported values as data', () => {
     await page.locator('#wm-overlay button[title="How to do this exercise"]').first().click();
     await clean();
     await page.evaluate(() => document.getElementById('wm-ex-info-modal')?.remove());
+    // the info buttons of the quote-free names: clicking must not run anything
+    for (const i of [2, 3]) {
+      await page.locator('#wm-overlay button[title="How to do this exercise"]').nth(i).click();
+      expect(await page.evaluate(() => window.__x)).toBeUndefined();
+      await page.evaluate(() => document.getElementById('wm-ex-info-modal')?.remove());
+    }
     await page.locator('#wm-tick-0-0').click();
     await page.locator('#wm-tick-1-0').click();
     await page.evaluate(() => window.mCloseModal('m-timer-modal'));
@@ -382,5 +391,35 @@ test.describe('render sinks treat stored and imported values as data', () => {
       window.mLoadPastWorkout(i);
     }, id);
     await clean();
+  });
+
+  test('a PR is recorded for exercise names that are also object property names', async ({
+    appPage: page,
+    siteURL,
+  }) => {
+    await seedStorage(page, { vaultfit_v1: JSON.stringify({ workouts: [] }), hb_seen_guide: '1' });
+    await page.goto(siteURL + 'index.html');
+    await page.waitForFunction(() => typeof state !== 'undefined' && !!window.HB);
+    await page.evaluate(() => HB.storage.ready());
+    const r = await page.evaluate(() => {
+      const out = [];
+      for (const n of ['constructor', 'toString', '__proto__']) {
+        window.mShowPage('train');
+        const rows = document.querySelectorAll('#m-ex-rows .ex-row-m');
+        rows[0].querySelector('.ex-name-m').value = n;
+        const inputs = rows[0].querySelectorAll('.mini-input');
+        inputs[0].value = '3';
+        inputs[1].value = '5';
+        inputs[2].value = '40';
+        window.mSaveWorkout();
+        out.push(
+          Object.prototype.hasOwnProperty.call(state.personalRecords, n) &&
+            state.personalRecords[n].value,
+        );
+      }
+      return { out, proto: Object.getPrototypeOf(state.personalRecords) === Object.prototype };
+    });
+    expect(r.out).toEqual([40, 40, 40]);
+    expect(r.proto).toBe(true); // `__proto__` became a plain key, not the prototype
   });
 });

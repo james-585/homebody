@@ -412,9 +412,10 @@ test('summary carries every number the preview needs (the UI computes nothing)',
   assert.equal(s.onlyPlans.plansAdded, 24);
   assert.ok(s.file.exported === null && s.file.dateRange.from && s.file.profileName);
   assert.ok([...s.file.profileName].length <= 500);
-  assert.ok(
-    !/[\uD800-\uDFFF](?![\uDC00-\uDFFF])/.test(s.file.profileName.slice(-1)),
-    'cut by code points, never mid-pair',
+  assert.equal(
+    s.file.profileName,
+    'Emoji \u{1F4AA}'.repeat(30),
+    'returned whole (the UI clips by grapheme)',
   );
   assert.deepEqual(Object.keys(s.warnings).sort(), [
     'dropped',
@@ -451,7 +452,9 @@ test('summary says whether Merge and plans-only would add nothing; Replace never
 
 test('summarize returns long names whole (up to the cap): a ZWJ family name over 100 code points is not cut', () => {
   const fam = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}\u200D\u{1F466}'.repeat(20); // 20 graphemes, 140 code points
-  const v = valid(file({ workouts: [], userPlans: [{ id: 1, name: fam, planDays: [] }], profile: { name: fam } }));
+  const v = valid(
+    file({ workouts: [], userPlans: [{ id: 1, name: fam, planDays: [] }], profile: { name: fam } }),
+  );
   const s = summarize({ workouts: [] }, v, { mirrorCeiling: 512 * 1024 });
   assert.equal(s.plans.items[0].name, fam);
   assert.equal(s.file.profileName, fam);
