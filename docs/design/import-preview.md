@@ -1,6 +1,6 @@
 # Import preview, confirm, Undo and export labelling (T7b)
 
-Status: **Approved by james585 on 2026-11-04, in chat.** Answers: Q1 the too-large backup saves the full export as `HomeBody_full_<YYYY-MM-DD>.txt`, labelled not importable today; Q2 the save bar's `Export` reads `Export this session` in states 6 to 8 (K30; amends write-failure-banner.md, see its dated amendment); Q3 Undo lasts until reload; Q4 the user taps Restart after Undo, no automatic reload; Q5 the import sheet and dialogs sit at z 9800, above the FAB; Q6 plans-only imports also get Undo; Q7 problem lists show positions only, never values. Section 12 (Addendum: refusal R5 "Not saved yet", the matching Undo refusal UF5 and the T7b handoff rules) approved by james585 on 2026-11-04, in chat: R5 as written, and Undo also refuses when changes are not saved. Kind mapping additions (R2 `stale`, R2b `restored`, UF2b, F9, their copy and check A37) and the rule that hides the save bar for the `restored`, `restoring` and `importing` read-only states (10.2, A38) approved by james585 on 2026-11-04, in chat. Author: product-designer, 2026-11-03. Branch `claude/t7-import-preview-spec`.
+Status: **Approved by james585 on 2026-11-04, in chat.** Amendments 13.1 to 13.4 (T7b review: home goal subtitle, R4 versus R2, toast placement, A21) approved by james585 on 2026-11-06, in chat; 13.5 and 13.6 record the designer's T7b review rulings; 13.7 is a Draft that needs James's approval. Answers: Q1 the too-large backup saves the full export as `HomeBody_full_<YYYY-MM-DD>.txt`, labelled not importable today; Q2 the save bar's `Export` reads `Export this session` in states 6 to 8 (K30; amends write-failure-banner.md, see its dated amendment); Q3 Undo lasts until reload; Q4 the user taps Restart after Undo, no automatic reload; Q5 the import sheet and dialogs sit at z 9800, above the FAB; Q6 plans-only imports also get Undo; Q7 problem lists show positions only, never values. Section 12 (Addendum: refusal R5 "Not saved yet", the matching Undo refusal UF5 and the T7b handoff rules) approved by james585 on 2026-11-04, in chat: R5 as written, and Undo also refuses when changes are not saved. Kind mapping additions (R2 `stale`, R2b `restored`, UF2b, F9, their copy and check A37) and the rule that hides the save bar for the `restored`, `restoring` and `importing` read-only states (10.2, A38) approved by james585 on 2026-11-04, in chat. Author: product-designer, 2026-11-03. Branch `claude/t7-import-preview-spec`.
 Plan: docs/plans/m1/T7.md (approved 2026-11-03). Related: docs/design/write-failure-banner.md (approved; bar patterns, live regions, push rule), docs/design/update-notice.md (update card), docs/design/design-system.md and tokens.json on `claude/design-system-m2` (proposal; tokens, components, z-scale), docs/security.md.
 Principles: 1 (Merge default, Replace explicit, snapshot, Undo), 2 (calm, plain, no claims), 4 (exports are labelled as health data), 5 (works offline; nothing interrupts a workout), 7 (the logging path is not touched), 8 (imported text is data: text nodes only).
 
@@ -438,7 +438,7 @@ Each is a state of the same sheet: a marker + title + body, then the footer. Unl
 | R2 | store read-only: `corrupt`, `future`, `unavailable`, and `stale` (a quick start showed older data, so saving is paused; the bar shows state 8) | at tap, or at apply | `io.r.readonly.title` | `io.r.readonly` | Close |
 | R2b | store read-only: `restoring` or `importing` (restart pending, or another import in this tab), and `restored` (an Undo or restore has finished and the app has not restarted yet) | at tap, or at apply | `io.r.restart.title` | `io.r.restart` | Close |
 | R3 | localStorage fallback engine | at tap, or at apply | `io.r.fallback.title` | `io.r.fallback` | Close |
-| R4 | not loaded yet (`hbLoadedOk` false) | at tap, or at apply | `io.r.loading.title` | `io.r.loading` | Close |
+| R4 | not loaded yet (`hbLoadedOk` false) **while boot is still in progress** (amended 2026-11-06, 13.2: once the save bar shows a read-only state, R2 instead) | at tap, or at apply | `io.r.loading.title` | `io.r.loading` | Close |
 | R5 *(section 12)* | kind `unsaved`: a save has failed or is retrying, or the plain copy is ahead of the last committed save | at tap (both import buttons), or at apply | `io.r.unsaved.title` | `io.r.unsaved` or `io.r.unsavedNoBar` | Close, Export backup (primary) |
 | M1 | module failed to load (offline and not cached, or network) | in I2 | `io.m.load.title` | `io.m.load` | Close, Reload |
 | M2 | version skew (`IO_API_VERSION` or `LATEST_SCHEMA` mismatch) | in I2 | `io.m.skew.title` | `io.m.skew` | Close, Reload |
@@ -855,7 +855,7 @@ Tokens only, no literals (system 2). Mapping for the implementer (M1 name, then 
 | FAB tray | 9600 | under the import sheet and its scrim (fixes K23 for this flow) |
 | Timer sheet | 9700 | not reachable while the import sheet is open (FAB under scrim) |
 | **Import sheet, Replace and Undo dialogs** | **9800** | `--z-dialog`; dialogs stack above the sheet in DOM order at the same z |
-| Toasts | 9950 | above the sheet: export toasts stay readable |
+| Toasts | 9950 | above the sheet: export toasts stay readable; while the sheet or a dialog is open the toast container is lifted above the sheet footer and dialog buttons (amended 2026-11-06, 13.3) |
 | Save-problem bar | 10000 | above everything; pushes the sheet down (the sheet is a `.modal-overlay`, already in the push list) |
 
 Must not interrupt a workout (principle 5, update-notice.md, write-failure-banner.md):
@@ -900,7 +900,7 @@ Apply, done, Undo
 
 Text safety
 - A20 Every text node in `#hb-io-sheet`, the dialogs, the card and the toasts equals a section 6 string, a formatted number or date, or the clipped value of a known imported/user name.
-- A21 A file whose profile and plan names are `"><img src=x onerror=window.__x=1>`, `&#39;);window.__x=1;//`, a 600-character string, a right-to-left name and an emoji-with-skin-tone name (all valid under the string rule except the first, which must be refused by F6): `window.__x` stays undefined; no `<img>` is created; displayed names are at most 40 graphemes plus `…`, never split an emoji or surrogate pair; no attribute anywhere contains any of these strings.
+- A21 A file whose profile and plan names are `"><img src=x onerror=window.__x=1>`, `&#39;);window.__x=1;//`, a 500-character string (accepted; amended 2026-11-06, 13.4: a 600-character string is over the 500 cap and shows F6), a right-to-left name and an emoji-with-skin-tone name (all valid under the string rule except the first, which must be refused by F6): `window.__x` stays undefined; no `<img>` is created; displayed names are at most 40 graphemes plus `…`, never split an emoji or surrogate pair; no attribute anywhere contains any of these strings.
 - A22 `mToast` is never called with a string containing a profile or plan name (spy over the whole flow).
 - A23 No `console.*` call during the flow contains file content (spy).
 
@@ -915,7 +915,7 @@ Layout, a11y, motion, workout
 - A31 Logging a set in the workout layer still takes the same taps as before (existing tap-count check passes unchanged); the goldens, `offline`, `update` and `idb` specs pass unchanged.
 - A33 Too-large export (stub `buildExport`'s size check to refuse): the 5.4 sheet shows `io.xc.title` and `io.xc.body`, nothing downloads until `Save as text file` is tapped; then exactly one `text/plain` download named `^HomeBody_full_\d{4}-\d{2}-\d{2}\.txt$` whose content parses to the full in-memory export (not the `vaultfit_v1` text), and the toast reads `io.xc.toastSaved`.
 - A34 *(section 12)* R5: with the IndexedDB save faulted so the save bar shows state 2, tap Import backup and Import plans only: R5 opens with `io.r.unsaved.title` and `io.r.unsaved`, no `filechooser` event fires, and the store is unchanged. With the same fault injected between preview and Import: R5 shows at apply, nothing is imported, and the in-memory edit is still present (deep-equal) and is saved by a later successful Retry. While R5 is open, a real-touch tap on the bar's Retry hits it (the bar is neither under the scrim nor `inert`); after bar state 4 (Saved) the sheet shows `io.r.unsaved.nowSaved` and `#hb-io-status` announced it once. `Export backup` in R5 downloads a file that contains the unsaved edit. With the mirror counter seeded ahead of the committed one and no bar showing, R5 uses `io.r.unsavedNoBar`. The sheet contains no Retry button and no `role="alert"`.
-- A35 *(section 12)* Handoff rules: (a) a Merge that adds nothing (`nothing: true`) leaves `state.*` identical (same object identity) and shows `io.sum.mergeNothing`; (b) in I6 no Check again control exists and Escape, scrim and Close do nothing; (c) a profile with `goal: "constructor"`, `sex: "hidden"` or `activity: "__proto__"` and a plan with `level: "active"` import with warnings, render `io.enum.unknown` where a label would show, and add no class, id or attribute containing the raw token anywhere in the DOM.
+- A35 *(section 12)* Handoff rules: (a) a Merge that adds nothing (`nothing: true`) leaves `state.*` identical (same object identity) and shows `io.sum.mergeNothing`; (b) in I6 no Check again control exists and Escape, scrim and Close do nothing; (c) a profile with `goal: "constructor"`, `sex: "hidden"` or `activity: "__proto__"` and a plan with `level: "active"` import with warnings, render `io.enum.unknown` where a label for that setting would show (plan level badge, profile fields; **not** the home goal subtitle, which keeps its fixed fallback `Ready to train?`, amended 2026-11-06, 13.1), and add no class, id or attribute containing the raw token anywhere in the DOM.
 - A36 *(section 12)* UF5: after a successful import, fault the IndexedDB save so the bar shows state 2, then tap Undo import (in I7 and in the card row): UF5 opens with `io.r.unsaved.title` and `io.uf.unsaved`, **U1 and U2 never open**, and the store and in-memory state are unchanged. With `restore` stubbed to refuse with kind `unsaved` after U1 is confirmed: UF5 shows, nothing is undone, the Undo row stays. With no bar showing and the mirror counter ahead: `io.uf.unsavedNoBar`. After bar state 4 the sheet shows `io.uf.unsaved.nowSaved`. No Retry button and no `role="alert"` in the sheet.
 - A37 Kind mapping is complete: a unit test iterates `HBStorage.IMPORT_KINDS`, the store's read-only kinds (`corrupt`, `future`, `unavailable`, `stale`, `restoring`, `importing`, `restored`) and `validate.js` `REASONS`, and asserts each has exactly one row in the 10.1 table and that every copy key in that row exists in the copy table; an unknown kind fails the test. e2e: (a) with the store locked as `restored` (Undo finished, before Restart; U4 cannot be closed, so drive the pre-check function directly) the import pre-check maps to R2b; (b) seeded `stale` boot shows R2 for Import and UF2 for Undo; (c) Check again after `dispose()` shows F9; (d) `restore` stubbed to throw `restored` shows UF2b.
 - A38 Save bar hidden for deliberate locks (10.2): (a) after Undo reaches U4 (store kind `restored`), `#hb-save` is not displayed, `html.hb-save-on` is absent, `--hb-bar-h` is `0px`, the bar's alert and status regions were never written, and focus is on the U4 title; (b) with `writeDoc` held open during I6 (kind `importing`) and during U3 (kind `restoring`), the same holds and the sheet's top does not move (bounding box unchanged within 1 px); (c) control: seeded `corrupt`, `future`, `unavailable` and `stale` still show bar states 6, 7, 8, 8 with the alert written once; (d) an import whose write finds newer data (store locks `future`) shows bar state 7 and the sheet R2.
@@ -932,7 +932,7 @@ Layout, a11y, motion, workout
 - *(Section 12)* **`nothing: true`.** Check `r.nothing` first. When it is true, do **not** replace `state.*` from `r.doc` (it is the IndexedDB read, not an import result); show the "nothing to add" outcome.
 - *(Section 12)* **`Check again` is unavailable while applying.** In I6 it is not rendered; in C1 it is busy (`aria-disabled`, label unchanged) from its tap until the new preview shows, so a double tap cannot start two previews or an apply.
 - *(Section 12)* **"Nothing to add" comes from `summarize`.** `summarize` exposes a boolean for "Merge adds nothing"; `io.sum.mergeNothing` and `io.plan.allPresent` are chosen from that boolean only, never by adding up counts in the UI.
-- *(Section 12)* **Unrecognised setting values.** Unrecognised enum tokens (profile `goal`, `sex`, `activity`; plan `goal` and `level`) arrive as warnings, not refusals. They are never displayed raw: a label comes from a fixed lookup table checked with `Object.hasOwn(table, token)` (so `constructor`, `__proto__`, `toString` never match inherited properties), and an unknown token shows `io.enum.unknown` through `textContent`. A token is never used as a class name, id or attribute; where a class is derived from a known token it is namespaced and taken from the table's own value (`hb-goal-<value>`), never from the raw token, so tokens such as `hidden` or `active` cannot hit existing classes. No new preview warning line is added for these.
+- *(Section 12)* **Unrecognised setting values.** Unrecognised enum tokens (profile `goal`, `sex`, `activity`; plan `goal` and `level`) arrive as warnings, not refusals. They are never displayed raw: a label comes from a fixed lookup table checked with `Object.hasOwn(table, token)` (so `constructor`, `__proto__`, `toString` never match inherited properties), and an unknown token shows `io.enum.unknown` through `textContent` where a label for that setting is displayed (amended 2026-11-06, 13.1: this means setting labels such as the plan level badge and profile fields; the home goal subtitle is a greeting, not a setting label, and keeps its fixed fallback `Ready to train?` for any goal without a label, including the valid `maintain`). A token is never used as a class name, id or attribute; where a class is derived from a known token it is namespaced and taken from the table's own value (`hb-goal-<value>`), never from the raw token, so tokens such as `hidden` or `active` cannot hit existing classes. No new preview warning line is added for these.
 - *(Section 12)* **R5 kind `unsaved`.** The synchronous pre-check reads the store status: `failed` or `retrying`, or the mirror counter ahead of the committed counter, maps to R5. The same kind from `previewImport` or `importDoc` maps to R5 too. Choose `io.r.unsaved` when the save bar is showing, otherwise `io.r.unsavedNoBar`.
 - **Kind to state (10.1).** T7b asserts this table is complete (A37).
 
@@ -947,7 +947,7 @@ Sources: `HBStorage.IMPORT_KINDS` and the store's read-only kinds in `src/hb-sto
 | `restoring`, `importing` (read-only) | R2b | UF2b | |
 | `restored` (read-only) | R2b | UF2b | after a finished Undo the Undo row is gone; this covers another path reaching the store before Restart |
 | `unsupported` (localStorage fallback engine) | R3 | UF2 | |
-| `not-loaded` | R4 | UF2 | |
+| `not-loaded` | R4 while boot is in progress; R2 once the save bar shows a read-only state (13.2) | UF2 | amended 2026-11-06 |
 | `unsaved` | R5 | UF5 | |
 | `io-unavailable` | M1 (export: XM1) | M1 | |
 | `io-skew` | M2 (export: XM2) | M2 | |
@@ -1058,5 +1058,78 @@ Decisions (James, 2026-11-04, in chat):
 1. **UF2b and F9 approved** with their copy, and the 10.1 table with A37.
 2. **The save bar is hidden for the read-only kinds `restored`, `restoring` and `importing`**; every other read-only kind still shows it. Contract in 10.2, check A38, amendment in write-failure-banner.md.
 
+## 13. Amendments 2026-11-06 (T7b design review of `claude/m1-t7-import` at 62aca6f)
+
+Status: 13.1 to 13.4 **approved by james585 on 2026-11-06, in chat**. 13.5 and 13.6 are the designer's review rulings within the approved spec (no new copy). 13.7 is **Draft - needs James's approval**.
+
+### 13.1 Home goal subtitle keeps "Ready to train?" (approved 2026-11-06)
+- Clarifies 12.3, section 10 ("Unrecognised setting values") and A35c: `io.enum.unknown` is for **setting labels** (the plan level badge, profile fields such as goal, sex and activity). It is not used in the home greeting.
+- The home subtitle (`#hm-sub`) shows the goal's label when the lookup table has one (`hbOwn`, own properties only) and otherwise the fixed string `Ready to train?`, as shipped. This covers unknown tokens and known goals without a label, including `maintain` (a valid choice in the Profile form) and legacy values such as `general`.
+- The fixed fallback never displays the raw token, so the 12.3 safety rule still holds: no raw token in text, class, id or attribute.
+- A35c is amended to match (section 9).
+
+### 13.2 R4 only while boot is in progress (approved 2026-11-06)
+- R4 (`Still starting up`, "wait a moment") is shown only while boot is still in progress.
+- Once the save-problem bar shows a read-only state (6, 7 or 8; for example `unavailable` when the storage code never loaded), the import pre-check and apply show **R2** (`Importing is paused`, "see the message at the top"), and Undo shows UF2. Reason: telling the user to wait contradicts the bar's "Close and reopen HomeBody", and waiting would never help.
+- No new copy. Sections 4.11 and 10.1 are amended to match.
+- Check: with `src/hb-storage.js` blocked and the bar in state 8, tapping Import backup shows R2 and no file chooser opens; with boot held before `hbLoadedOk`, R4 shows.
+
+### 13.3 Toasts never cover the sheet footer or dialog buttons (approved 2026-11-06)
+- While `#hb-io-sheet` or `#hb-io-dlg` is open, the toast container (z 9950, unchanged) is placed so its lowest toast sits at least 12 px **above the top edge of the sheet footer** (sheet states) or above the top of the dialog's button group (dialogs). Toasts stay readable and above the scrim, as section 8 requires, and never overlap or intercept a tap on a sheet or dialog button.
+- When the sheet and dialogs close, the container returns to its normal place. Reduced motion: no transition on the move.
+- No new copy.
+- Check: with the sheet open in R5 and in I7, and with U2 open, trigger a toast; at 375x667, 390x844 and 812x375 (200% text) no toast box intersects any footer or dialog button box, and a real tap at 85% across each button hits it.
+
+### 13.4 A21 name lengths (approved 2026-11-06)
+The validator caps names at 500 characters. A21 therefore uses a 500-character name (accepted, displayed clipped to 40 graphemes plus `…`); a 600-character name is over the cap and must show F6 with the `is too long` reason and a position-only path.
+
+### 13.5 Accepted engineering deviations (designer ruling, T7b review)
+| Deviation (K49) | Ruling |
+| --- | --- |
+| `summarize` has no current profile name; the UI reads `state.profile.name` for `{mine}` in `io.prof.replace` | Accepted. It is the user's own name, rendered only through the 2.2 text-node span, clipped to 40 graphemes. |
+| Plan names cut at 40 by `summarize`, with the UI adding `…` | Accepted with a change: `summarize` returns plan names up to **100 code points** (as it already does for `profileName`) and the UI alone does the 40-grapheme clip of 2.2 rule 3. This removes the false `…` on a name of exactly 40 and never splits a grapheme (ZWJ or skin-tone emoji). |
+| `bad-date` has one reason string (`isn't a valid date`), including dates outside the window | Accepted for M1. Follow-up: when the validator splits the code, the window case uses `has a date before 2000 or more than a year ahead` (already approved copy). |
+| Reserved key (`__proto__`, `constructor`, `prototype`) mapped to `uses a name HomeBody can't accept` | Accepted. No raw token reaches the DOM. |
+| `Save as text file` built in the UI | Accepted for design (filename, toast and sheet meet Decision 1 and A33). The content must be produced by `buildExport` with the cap lifted (an `{uncapped}` option), or else be pinned by a test that compares it with `buildExport`'s output for the same state, so the two never drift. Architect and code-reviewer choose. |
+| Module preload (`import()` started right after `input.click()`) not implemented | Deferred. The cost is a slightly longer I2 and M1 appearing after the file is read. Revisit when module loading is next touched. |
+| `Replay App Tutorial` label | Accepted: 3.1 keeps the shipped label minus the emoji; the wireframe's sentence case is notation. |
+
+### 13.6 Acceptance contract for the T7b re-review
+The re-review passes when each item holds at 375x667 and 390x844, dark and light, and at 200% text (375x667 and 812x375):
+1. The partial-file reason `io.opt.replacePartial` is at full opacity (only the radio and the option's title and hint are at 40%); measured contrast at least 4.5:1 in both themes.
+2. The Replace dialog with no current data uses `io.sum.replaceEmpty` as its body; no sentence contains `your 0`.
+3. `Keep import` (and Escape or scrim) in U1/U2 opened from I7 returns focus to the Undo button in the sheet body; from the card row, to the card's Undo button. Never `<body>`.
+4. The U2 dialog's `Export backup` button is 48 px tall (not stretched); `Keep import` and `Undo anyway` are fully visible without scrolling the page at every size above (the dialog body scrolls; the buttons stay pinned).
+5. XM1's in-body `Export saved file` button is at least 48 px tall.
+6. The home goal subtitle follows 13.1 (`maintain`, `general` and unknown tokens show `Ready to train?`); A35c updated.
+7. Footer and dialog labels never wrap inside a button: `white-space:nowrap`, and the pair stacks (primary lowest; the safe button lowest in dialogs) only when a label doesn't fit.
+8. At 812x375 with 200% text, footer pairs that fit stay side by side, and every state shows its title and at least two lines of body above the footer (R5 with the bar showing included).
+9. Toast placement per 13.3.
+10. Tab and Shift+Tab cycle inside the sheet and dialogs; focus never reaches `<body>`. Only in R5/UF5 may focus go on to the save bar.
+11. When the bar's Retry reaches Saved while R5/UF5 is open, focus moves to the sheet title (not `<body>`); `io.r.unsaved.nowSaved` / `io.uf.unsaved.nowSaved` is announced once.
+12. I2 for files up to 1 MB shows only `io.check.body` after 300 ms; `io.check.parsing` only for files over 1 MB.
+13. R4 versus R2 per 13.2.
+14. I6 keeps the preview visible (non-interactive) with `io.apply.keepOpen` above the footer, instead of replacing the body.
+
+Polish, not blocking: the `How to import` legend gets 16 px above it; the header `Close` is vertically centred on the title row; `io.enum.unknown` and `Export saved file` are read from the copy tables, not literals.
+
+### 13.7 Health label and XM1 title (Draft - needs James's approval)
+Source: security review LOW 4. `io.health.label` says backups "stay on your device unless you share them", but the phone may sync or back up its Downloads folder (iCloud Drive, Google or Android backup), so that is not always true.
+
+Proposed copy (smallest accurate change):
+| Key | Now | Proposed |
+| --- | --- | --- |
+| `io.health.label` | `Backups hold your health data, such as body measurements. Keep them private. They stay on your device unless you share them.` | `Backups hold your health data, such as body measurements. Keep them private. HomeBody never uploads them, but your phone may back up or sync your files.` |
+| `io.health.short` | `It holds your health data. Keep it private.` | Unchanged: it makes no claim about where the file goes. |
+
+Other strings checked: `io.card.rawNote`, `io.card.rawNoteStale`, `io.x.toast`, `io.xp.toast`, `io.xc.toastSaved` and `io.raw.toast` only say "Keep it private" and are unaffected. `io.rep.undoNote`, `io.done.copyKept` and `io.undo2.copy` refer to the pre-import copy that HomeBody keeps in its own storage on this device, which is accurate.
+
+XM1 title. XM1 (export: the module failed to load) reuses `io.m.load.title` `Import isn't available right now`, which is wrong for an export. New key:
+| Key | Proposed | Note |
+| --- | --- | --- |
+| `io.m.loadExport.title` | `Can't make a backup right now` | Recommended. The body `io.m.loadExport` already begins "Part of HomeBody didn't load, so it can't make a backup", so this title avoids repeating it. |
+| (alternative) | `Part of HomeBody didn't load` | Only if James prefers the cause in the title; the body would then start "HomeBody can't make a backup. Reload HomeBody, then try again. Nothing was changed." |
+In 5.6 the XM1 row would use `io.m.loadExport.title` / `io.m.loadExport`. The marker stays the circle `!`; footer and buttons unchanged.
+
 ## Approval
-Approved by james585 on 2026-11-04, in chat (answers in section 11).
+Approved by james585 on 2026-11-04, in chat (answers in section 11). Amendments 13.1 to 13.4 approved by james585 on 2026-11-06, in chat; 13.7 is a Draft that needs James's approval.
