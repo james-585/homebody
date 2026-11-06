@@ -209,7 +209,7 @@ test.describe('layers, focus, toasts, held applies', () => {
     });
     await page.locator('#hb-io-dlg .hb-io-wide').click();
     await expect(
-      page.locator('.m-toast', { hasText: one('io.xc.toastWorkout') }).first(),
+      page.locator('.m-toast', { hasText: one('io.xc.toastBusy') }).first(),
     ).toBeVisible();
     await expect(page.locator('#hb-io-sheet')).toBeHidden(); // no sheet replaced the dialog
     await page.keyboard.press('Escape');
@@ -408,7 +408,8 @@ test.describe('layers, focus, toasts, held applies', () => {
     await page.locator('#hb-io-primary').click();
     await expect(page.locator('#hb-io-primary')).toHaveText('Importing…');
     await expect(body(page)).toContainText('Adds 2 workouts');
-    await expect(body(page)).toContainText(one('io.apply.keepOpen'));
+    await expect(page.locator('#hb-io-sheet .hb-io-busyline')).toHaveText(one('io.apply.keepOpen'));
+    expect(await page.locator('#hb-io-sheet .hb-io-body').innerText()).not.toContain(one('io.apply.keepOpen'));
     expect(
       await page.evaluate(
         () => document.querySelector('#hb-io-sheet .hb-io-body [inert]') !== null,

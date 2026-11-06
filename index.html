@@ -243,12 +243,14 @@ html[data-theme="light"] #hb-io-sheet,html[data-theme="light"] #hb-io-dlg{backgr
 .hb-io-body{padding:14px 18px;overflow-y:auto;overscroll-behavior:contain;flex:1 1 auto;min-height:0}
 .hb-io-foot{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--border);padding:12px 18px max(12px,env(safe-area-inset-bottom));display:flex;flex-wrap:wrap;gap:8px;flex:0 0 auto}
 .hb-io-foot[hidden]{display:none}
+.hb-io-busyline{margin:0;padding:8px 18px;border-top:1px solid var(--border);color:var(--text);font:0.875rem/1.45 Inter,sans-serif;flex:0 0 auto;background:var(--surface)}
+.hb-io-busyline[hidden]{display:none}
 .hb-io-foot button,#hb-io-dlg button{flex:1 1 0;min-width:max-content;min-height:48px;white-space:nowrap}
 #hb-io-dlg .hb-io-dlg-foot>.hb-io-wide{flex:0 0 auto;width:100%;min-height:48px}
 .hb-io-body .hb-io-wide{min-height:48px}
 html.hb-io-open .toast-container{bottom:var(--hb-io-toast-bottom,calc(var(--nav-h) + var(--safe-bottom) + 14px))}
 html.hb-io-open .m-toast{pointer-events:none}
-@media (max-height:500px){.hb-io-panel{max-height:calc(100vh - var(--hb-bar-h,0px) - 8px);max-height:calc(100dvh - var(--hb-bar-h,0px) - 8px)}.hb-io-grab{display:none}.hb-io-hdr{min-height:48px;padding-top:4px;padding-bottom:4px}.hb-io-close{top:0}.hb-io-body{padding-top:8px;padding-bottom:8px}.hb-io-foot{padding-top:6px;padding-bottom:max(6px,env(safe-area-inset-bottom))}}
+@media (max-height:500px){.hb-io-panel{max-height:calc(100vh - var(--hb-bar-h,0px) - 8px);max-height:calc(100dvh - var(--hb-bar-h,0px) - 8px)}.hb-io-grab{display:none}.hb-io-hdr{min-height:48px;padding-top:4px;padding-bottom:4px}.hb-io-close{top:0}.hb-io-body{padding-top:4px;padding-bottom:4px}.hb-io-foot{padding-top:4px;padding-bottom:max(6px,env(safe-area-inset-bottom))}}
 .hb-io-busy,.hb-io-foot button[aria-disabled=true]{pointer-events:none}
 .hb-io-eyebrow{font:700 0.75rem Oswald,sans-serif;letter-spacing:0.1em;text-transform:uppercase;color:var(--text);margin:16px 0 6px;padding:0}
 .hb-io-rows,.hb-io-list{list-style:none;margin:0;padding:0}
@@ -1171,6 +1173,10 @@ function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&
 // only through hbNum (a finite number, else 0); enum-like tokens reach markup only through a table lookup.
 function hbNum(v) { const n = typeof v === 'number' ? v : (typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN); return Number.isFinite(n) ? n : 0; }
 function hbOwn(table, key) { return typeof key === 'string' && Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined; }
+// Personal records are keyed by exercise name: read own keys only (a name such as `constructor` must not find an
+// inherited value) and write with defineProperty (a name such as `__proto__` must not set the prototype).
+function hbPR(name) { return hbOwn(state.personalRecords, name); }
+function hbSetPR(name, rec) { Object.defineProperty(state.personalRecords, name, { value: rec, enumerable: true, writable: true, configurable: true }); }
 const HB_PLAN_LEVELS = { beginner: 'beginner', intermediate: 'intermediate', advanced: 'advanced' };
 // Plan level -> { cls, label }: the class comes from the table's own value (never the raw token); an unknown token
 // shows the fixed "unrecognised" label (import-preview.md, io.enum.unknown) and no class.
@@ -2510,8 +2516,8 @@ function mSaveWorkout() {
         if(tt==='reps') totalVol+=sets*val*weight;
       }
       // PR tracking on base name (not side-specific)
-      if(tt==='reps'&&weight>0){if(!state.personalRecords[exName]||weight>state.personalRecords[exName].value){state.personalRecords[exName]={value:weight,unit:'kg'};mToast(`🏆 New PR! ${exName}: ${weight}kg`,'success');}}
-      else if(tt==='time'&&val>0){if(!state.personalRecords[exName]||val>state.personalRecords[exName].value){state.personalRecords[exName]={value:val,unit:'sec'};mToast(`🏆 New PR! ${exName}: ${val}s`,'success');}}
+      if(tt==='reps'&&weight>0){if(!hbPR(exName)||weight>hbPR(exName).value){hbSetPR(exName,{value:weight,unit:'kg'});mToast(`🏆 New PR! ${exName}: ${weight}kg`,'success');}}
+      else if(tt==='time'&&val>0){if(!hbPR(exName)||val>hbPR(exName).value){hbSetPR(exName,{value:val,unit:'sec'});mToast(`🏆 New PR! ${exName}: ${val}s`,'success');}}
     }
   });
   if (!exercises.length) { mToast('Add at least one exercise','error'); return; }
@@ -6133,6 +6139,9 @@ const HB_IO_COPY = {
   'io.xc.toastWorkout': 'Backup not made: too large. See Profile after your workout.',
   'io.raw.toast': 'Saved file downloaded. It holds your health data. Keep it private.',
   'io.x.failed': "Couldn't make the backup. Nothing was changed. Try again.",
+  'io.x.failedBusy': "Couldn't make the backup. Nothing was changed. Try again from Data & backup when you're done here.",
+  'io.xc.toastBusy': "Backup not made: too large. Nothing was changed. See Data & backup when you're done here.",
+  'io.xw.toastBusy': "Backup saved. Some entries won't import: see Data & backup when you're done here.",
   'io.x.failedWorkout': "Couldn't make the backup. Try again after your workout.",
   // Record-path labels (6.4). {i} is an integer.
   'io.path.file': 'File details',
@@ -6324,7 +6333,7 @@ const HBIO = (function () {
   const todayISO = () => new Date().toISOString().slice(0, 10);
 
   // ── the sheet ──
-  let sheet = null, panel, hdrMk, titleEl, bodyEl, footEl, closeBtn, dlg, dlgBox;
+  let sheet = null, panel, busyEl, hdrMk, titleEl, bodyEl, footEl, closeBtn, dlg, dlgBox;
   let isOpen = false, opener = null, openerSel = '', cur = null, dlgSpec = null, sheetLocked = false, dlgLocked = false, busyApply = false;
   let flow = null; // the import in progress: {plans, file, imp, summary, mode, cancelled, applying}
   let last = null; // the last completed import this session: {imp, at, plans}
@@ -6346,7 +6355,7 @@ const HBIO = (function () {
     if (!(sheetLocked || dlgLocked)) { root.style.removeProperty('--hb-io-toast-bottom'); return; }
     let px = 0;
     if (dlgLocked && dlgBox) { const f = dlgBox.querySelector('.hb-io-dlg-foot'); if (f) px = window.innerHeight - f.getBoundingClientRect().top; }
-    else if (footEl && !footEl.hidden) px = footEl.getBoundingClientRect().height;
+    else if (footEl && !footEl.hidden) px = window.innerHeight - (busyEl && !busyEl.hidden ? busyEl : footEl).getBoundingClientRect().top;
     root.style.setProperty('--hb-io-toast-bottom', Math.ceil(px + 12) + 'px');
   }
   function setBusy(on) { busyApply = on; barRefresh(); } // the update card waits while an apply or undo runs (hbSaveHold)
@@ -6366,7 +6375,8 @@ const HBIO = (function () {
     footEl = E('div', 'hb-io-foot');
     closeBtn = E('button', 'hb-io-close'); closeBtn.type = 'button'; closeBtn.textContent = C['io.btn.close'];
     closeBtn.addEventListener('click', () => { if (closeBtn.getAttribute('aria-disabled') !== 'true') escapeSheet(); });
-    panel.append(grab, hdr, closeBtn, bodyEl, footEl);
+    busyEl = E('p', 'hb-io-busyline'); busyEl.hidden = true;
+    panel.append(grab, hdr, closeBtn, bodyEl, busyEl, footEl);
     sheet.append(panel);
     sheet.addEventListener('click', (e) => { if (e.target === sheet) escapeSheet(); });
     dlg = E('div'); dlg.id = 'hb-io-dlg';
@@ -6374,6 +6384,8 @@ const HBIO = (function () {
     dlg.append(dlgBox);
     dlg.addEventListener('click', (e) => { if (e.target === dlg && dlgSpec) dlgSpec.safe(); });
     document.body.append(sheet, dlg);
+    if (window.ResizeObserver) { const ro = new ResizeObserver(() => liftToasts()); ro.observe(footEl); ro.observe(dlgBox); ro.observe(panel); }
+    window.addEventListener('resize', () => liftToasts());
   }
   function openSheet(op) {
     build();
@@ -6413,13 +6425,17 @@ const HBIO = (function () {
   }
   // Tab stays inside the open layer. R5 and UF5 are the one place focus may leave (to the save bar's Retry).
   function wrapTab(e) {
-    if (!dlgSpec && cur && (cur.id === 'R5' || cur.id === 'UF5')) return;
+    const vis = (x) => !x.disabled && !x.hidden && !x.closest('[hidden],[inert]') && x.getClientRects().length > 0;
     const box = dlgSpec ? dlgBox : panel;
-    const items = [...box.querySelectorAll('button,input,[tabindex="0"]')].filter((x) => !x.disabled && !x.hidden && !x.closest('[hidden],[inert]') && x.getClientRects().length > 0);
+    let items = [...box.querySelectorAll('button,input,[tabindex="0"]')].filter(vis);
+    // R5 and UF5: the save bar's buttons are part of the cycle (they come first), so Tab never reaches <body>
+    const bar = !dlgSpec && cur && (cur.id === 'R5' || cur.id === 'UF5') ? document.getElementById('hb-save') : null;
+    if (bar) items = [...bar.querySelectorAll('button')].filter(vis).concat(items);
     if (!items.length) return;
     const first = items[0], lastEl = items[items.length - 1], a = document.activeElement;
-    if (e.shiftKey && (a === first || !box.contains(a) || a === titleEl)) { e.preventDefault(); lastEl.focus(); }
-    else if (!e.shiftKey && (a === lastEl || !box.contains(a))) { e.preventDefault(); first.focus(); }
+    const inside = items.includes(a);
+    if (e.shiftKey && (a === first || !inside)) { e.preventDefault(); lastEl.focus(); }
+    else if (!e.shiftKey && (a === lastEl || !inside)) { e.preventDefault(); first.focus(); }
   }
   function onKey(e) {
     if (e.key === 'Tab') return wrapTab(e);
@@ -6449,6 +6465,7 @@ const HBIO = (function () {
     closeBtn.hidden = !!spec.noClose;
     if (spec.closeBusy) closeBtn.setAttribute('aria-disabled', 'true'); else closeBtn.removeAttribute('aria-disabled');
     sheet.setAttribute('aria-describedby', spec.desc || 'hb-io-desc');
+    busyEl.hidden = true; busyEl.removeAttribute('id'); busyEl.textContent = '';
     bodyEl.scrollTop = 0;
     titleEl.focus({ preventScroll: true });
     liftToasts();
@@ -6955,9 +6972,11 @@ const HBIO = (function () {
     setBusy(true);
     setState({
       id: 'I6', title: S(plans ? 'io.plan.title' : 'io.prev.title'), desc: 'hb-io-desc', closable: false, closeBusy: true,
-      body: [...keep, para('hb-io-desc', S('io.apply.keepOpen'))],
+      body: keep,
       foot: [{ label: C['io.btn.cancel'], busy: true, on: () => {} }, { label: plans ? C['io.btn.adding'] : C['io.btn.importing'], primary: true, busy: true, id: 'hb-io-primary', on: () => {} }],
     });
+    // the keep-open line sits between the body and the footer, never inside the scrolling part
+    busyEl.id = 'hb-io-desc'; busyEl.textContent = S('io.apply.keepOpen'); busyEl.hidden = false; liftToasts();
     say(S('io.apply.keepOpen'));
     let r;
     try {
@@ -7115,9 +7134,10 @@ const HBIO = (function () {
   const midFlow = () => !!(dlgSpec || (isOpen && cur && (cur.closable === false || cur.id === 'I2')));
   function exportFailure(e, fromBar) {
     const inWm = wmOpen() || midFlow();
+    const busyKey = wmOpen() ? 'io.x.failedWorkout' : 'io.x.failedBusy';
     const kind = e && e.kind;
     if (kind === 'io-unavailable' || kind === 'io-skew' || !window.HB) {
-      if (inWm) return note('io.x.failedWorkout', null, null, 'error', fromBar);
+      if (inWm) return note(busyKey, null, null, 'error', fromBar);
       const id = kind === 'io-skew' ? 'M2' : 'M1';
       let rawBtn = null;
       if (id === 'M1' && rawAvailable()) {
@@ -7129,7 +7149,7 @@ const HBIO = (function () {
       openSheet(null); setState(spec);
       return;
     }
-    note(inWm ? 'io.x.failedWorkout' : 'io.x.failed', null, null, 'error', fromBar);
+    note(inWm ? busyKey : 'io.x.failed', null, null, 'error', fromBar);
   }
   let exporting = false;
   async function exportBackup(btn, from) {
@@ -7146,22 +7166,22 @@ const HBIO = (function () {
       const inWm = wmOpen() || midFlow();
       if (!r.ok) {
         if (r.reason === 'too-large') {
-          if (inWm) return note('io.xc.toastWorkout', null, null, '', fromBar);
+          if (inWm) return note(wmOpen() ? 'io.xc.toastWorkout' : 'io.xc.toastBusy', null, null, '', fromBar);
           openSheet(btn);
           setState({
             id: 'X2', mk: 'bad', title: S('io.xc.title'), desc: 'hb-io-desc',
             body: [para('hb-io-desc', S('io.xc.body')), E('div', 'hb-io-warn', marker('info'), E('p', 'hb-io-p', S('io.health.short')))],
-            foot: [{ label: C['io.btn.saveText'], primary: true, on: () => saveFullText() }],
+            foot: [{ label: C['io.btn.saveText'], primary: true, on: (b) => saveFullText(b) }],
           });
           return;
         }
-        return note(inWm ? 'io.x.failedWorkout' : 'io.x.failed', null, null, 'error', fromBar);
+        return note(inWm ? (wmOpen() ? 'io.x.failedWorkout' : 'io.x.failedBusy') : 'io.x.failed', null, null, 'error', fromBar);
       }
       try { download(r.text, r.filename, 'application/json'); } catch (e) { return exportFailure(e, fromBar); }
       const refused = r.warnings && Array.isArray(r.warnings.refused) ? r.warnings.refused : [];
       if (refused.length) {
         const lines = problemLines(refused);
-        if (inWm) { pendingExportWarn = lines; note('io.xw.toastWorkout', null, null, '', fromBar); hbIoRenderCard(); return; }
+        if (inWm) { pendingExportWarn = lines; note(wmOpen() ? 'io.xw.toastWorkout' : 'io.xw.toastBusy', null, null, '', fromBar); hbIoRenderCard(); return; }
         showExportWarn(lines, btn);
         return;
       }
@@ -7185,12 +7205,24 @@ const HBIO = (function () {
     if (n >= 20) body.push(para('', S('io.list.first20')));
     setState({ id: 'X1', mk: 'warn', title: S('io.xw.title'), desc: 'hb-io-desc', body, foot: [{ label: C['io.btn.done'], primary: true, on: () => closeSheet() }] });
   }
-  async function saveFullText() {
+  let savingText = false;
+  async function saveFullText(btn) {
+    if (savingText) return; // a double tap must not download twice
+    savingText = true;
+    if (btn) btn.setAttribute('aria-disabled', 'true');
+    const label = btn ? btn.textContent : '';
+    const t = btn ? setTimeout(() => { btn.textContent = C['io.btn.exporting']; }, 300) : 0;
     try {
       const r = await window.HB.io.exportFile(exportPayload(), { uncapped: true });
       if (!r.ok) throw new Error('export');
       download(r.text, 'HomeBody_full_' + todayISO() + '.txt', 'text/plain');
-    } catch (e) { note('io.x.failed', null, null, 'error', false); return; }
+    } catch (e) {
+      clearTimeout(t); savingText = false;
+      if (btn) { btn.removeAttribute('aria-disabled'); btn.textContent = label; }
+      note('io.x.failed', null, null, 'error', false);
+      return;
+    }
+    clearTimeout(t); savingText = false;
     closeSheet();
     note('io.xc.toastSaved', null, null, 'success', false);
   }
@@ -7260,7 +7292,9 @@ const HBIO = (function () {
       if (cur && (cur.id === 'R5' || cur.id === 'UF5') && st.state === 'idle' && !cur.savedShown) {
         cur.savedShown = true;
         const key = cur.id === 'R5' ? 'io.r.unsaved.nowSaved' : 'io.uf.unsaved.nowSaved';
-        bodyEl.append(para('', S(key)));
+        const line = para('', S(key));
+        bodyEl.append(line);
+        line.scrollIntoView({ block: 'nearest' });
         say(S(key));
       }
       refreshReload();
@@ -7277,8 +7311,9 @@ const HBIO = (function () {
     init, renderCard, pickFile, exportBackup, rawExport, undoTap,
     isQuiet: () => quiet, exportName,
     isBusy: () => busyApply,
-    // Test hooks (read-only views of the flow): the e2e specs drive every kind through the real state builders.
-    __test: { showError: (e) => showError(e), showUndoError: (e) => showUndoError(e), flowImp: () => (flow && flow.imp) || null },
+    // Test hooks: the e2e specs drive every kind through the real state builders.
+    // only present when the e2e harness sets window.__HB_TEST before the page loads; not in production
+    __test: window.__HB_TEST ? { showError: (e) => showError(e), showUndoError: (e) => showUndoError(e), flowImp: () => (flow && flow.imp) || null } : undefined,
     // The save bar re-rendered while focus was inside it and a sheet is open: focus goes to the sheet title.
     refocus: () => { if (!isOpen || !titleEl) return false; titleEl.focus({ preventScroll: true }); return true; },
   };
@@ -8350,8 +8385,8 @@ function wmSaveWorkout() {
 
     // PR tracking
     if (tt === 'reps' && weight > 0) {
-      if (!state.personalRecords[ex.name] || weight > state.personalRecords[ex.name].value) {
-        state.personalRecords[ex.name] = { value: weight, unit: 'kg' };
+      if (!hbPR(ex.name) || weight > hbPR(ex.name).value) {
+        hbSetPR(ex.name, { value: weight, unit: 'kg' });
         setTimeout(() => mToast(`🏆 New PR! ${ex.name}: ${weight}kg`, 'success'), 500);
       }
     }
@@ -9447,7 +9482,7 @@ function hbWorkoutActive() {
     const first = !wasControlled;
     wasControlled = true;
     if (first) loadVersion();                         // an old page keeps showing the version it booted with
-    if (requested && !hbWorkoutActive() && reg && reg.scope === APP_SCOPE) { location.reload(); return; }
+    if (requested && !hbWorkoutActive() && !(window.hbSaveHold && window.hbSaveHold()) && reg && reg.scope === APP_SCOPE) { location.reload(); return; }
     if (first && !requested) {                        // first install claimed this page: no reload
       if (!hbWorkoutActive()) mToast('Ready to use offline', 'success');
       refreshAbout();

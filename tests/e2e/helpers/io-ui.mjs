@@ -35,6 +35,9 @@ export const fileOf = (text, name = 'x.vaultfit') => ({
 });
 
 export async function openApp(page, siteURL, { data = OLD_TEXT, extra = {}, profile = true } = {}) {
+  await page.addInitScript(() => {
+    window.__HB_TEST = true; // enables HBIO.__test (not present in production)
+  });
   await seedStorage(page, {
     vaultfit_v1: data,
     hb_seen_guide: '1',

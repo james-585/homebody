@@ -1183,7 +1183,8 @@ test.describe('A36, A38: Undo refusals and the save bar for deliberate locks', (
     await page.locator('.hb-io-close').click({ force: true });
     await expect(page.locator('#hb-io-sheet')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Check again' })).toHaveCount(0);
-    await expect(body(page)).toContainText(one('io.apply.keepOpen'));
+    await expect(page.locator('#hb-io-sheet .hb-io-busyline')).toHaveText(one('io.apply.keepOpen'));
+    expect(await page.locator('#hb-io-sheet .hb-io-body').innerText()).not.toContain(one('io.apply.keepOpen'));
     expect(await page.locator(BAR).evaluate((e) => getComputedStyle(e).visibility)).toBe('hidden');
     await page.waitForTimeout(300);
     const top1 = (await page.locator('.hb-io-panel').boundingBox()).y;

@@ -352,7 +352,7 @@ export function summarize(current, validated, { mirrorCeiling = Infinity } = {})
       userPlans: d.userPlans.length,
       favourites: d.favourites.length,
       hasProfile: !!d.profile,
-      profileName: d.profile ? clip(d.profile.name, 100) : null,
+      profileName: d.profile ? clip(d.profile.name, 500) : null,
       dateRange: range(d.workouts),
       partial: validated.partial.partial,
       partialReason: validated.partial.reason,
@@ -376,7 +376,7 @@ export function summarize(current, validated, { mirrorCeiling = Infinity } = {})
     plans: {
       total: d.userPlans.length,
       items: d.userPlans.slice(0, PLAN_LIST_MAX).map((p) => ({
-        name: clip(p.name, 100), // the UI clips by grapheme and adds the ellipsis
+        name: clip(p.name, 500), // the name cap: the UI does the 40-grapheme clip and the ellipsis
         days: p.planDays.length,
         present: planIds.has(p.id),
       })),
