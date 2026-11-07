@@ -654,6 +654,36 @@ test.describe('real touch on the core path, at two widths and both themes', () =
       await expect(t).toHaveClass(/done/);
       expect(taps).toBeLessThanOrEqual(2);
     });
+    test('from the active workout the focus view logs a set in at most two taps @smoke', async ({
+      appPage: page,
+      siteURL,
+    }) => {
+      const ACTIVE = readFileSync(join(SYNTHETIC_DIR, 'hb_active_workout.json'), 'utf8');
+      await page.addInitScript(() => localStorage.setItem('hb_wm_view', 'focus'));
+      await seedStorage(page, {
+        vaultfit_v1: JSON.stringify(seedData()),
+        hb_seen_guide: '1',
+        hb_active_workout: ACTIVE,
+      });
+      await page.goto(siteURL + 'index.html');
+      await page.waitForFunction(
+        () =>
+          typeof state !== 'undefined' && !!window.HB && !!document.getElementById('wm-overlay'),
+      );
+      const done = () =>
+        page.evaluate(() =>
+          wmState.exercises.reduce((n, e) => n + e.sets.filter((s) => wmSetDone(s)).length, 0),
+        );
+      const before = await done();
+      let taps = 0;
+      while ((await done()) === before && taps < 3) {
+        await tap(page, page.locator('#wm-focus .wmf-log'));
+        taps++;
+        await page.evaluate(() => mCloseModal('m-timer-modal'));
+      }
+      expect(await done()).toBe(before + 1);
+      expect(taps).toBeLessThanOrEqual(2);
+    });
   });
 });
 

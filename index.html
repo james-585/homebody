@@ -635,6 +635,7 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
 .timer-display{font-variant-numeric:tabular-nums}
 
 /* Focus view: one exercise at a time (Chalk blue) */
+body:has(#wm-overlay) .m-toast{pointer-events:none}
 .wm-overlay .wm-focus{display:none;flex:1;min-height:0;flex-direction:column;padding:6px 20px calc(env(safe-area-inset-bottom,0px) + 16px);overflow-y:auto;-webkit-overflow-scrolling:touch}
 .wm-overlay.wm-focus-mode .wm-focus{display:flex}
 .wm-overlay.wm-focus-mode .wm-body{display:none}
@@ -664,6 +665,10 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
 .wmf-val{width:100%;background:transparent;border:0;outline:0;color:var(--text);text-align:center;font-family:'Oswald',sans-serif;font-weight:700;font-size:3.2rem;line-height:1.1;font-variant-numeric:tabular-nums;-moz-appearance:textfield;appearance:textfield}
 .wmf-val::-webkit-outer-spin-button,.wmf-val::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .wmf-val:focus{box-shadow:0 2px 0 var(--accent)}
+.wmf-rest{display:flex;align-items:center;gap:8px;margin-top:12px}
+.wmf-rest-l{font-size:11px;font-weight:600;letter-spacing:0.14em;color:var(--muted);text-transform:uppercase;margin-right:2px}
+.wmf-rest-b{flex:1;min-height:44px;border-radius:14px;background:var(--surface);border:1px solid var(--border);color:var(--muted);font-family:'Oswald',sans-serif;font-weight:600;font-size:0.9rem;cursor:pointer}
+.wmf-rest-b.on{border:2px solid var(--accent);color:var(--text)}
 .wmf-hint{margin-top:12px;font-size:0.875rem;color:var(--muted);text-align:center;min-height:1.2em}
 .wmf-spacer{flex:1;min-height:12px}
 .wmf-log{min-height:72px;border:0;border-radius:22px;background:var(--accent);color:var(--on-accent);font-family:'Oswald',sans-serif;font-weight:700;font-size:1.4rem;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;width:100%}
@@ -6204,7 +6209,7 @@ function mLoadGenerated(){
 // ─── REST TIMER ───
 let mTs=30,mTt=30,mTr=false,mTi=null;
 function mSetTimer(s){clearInterval(mTi);mTr=false;mTs=s;mTt=s;document.getElementById('m-timer-btn').textContent='Start';document.getElementById('m-timer-disp').classList.remove('warn','timer-ok','timer-warn','timer-urgent');mTick();document.querySelectorAll('.timer-preset').forEach(b=>b.classList.remove('active'));event.target.classList.add('active');}
-function mToggleTimer(){if(mTr){clearInterval(mTi);mTr=false;document.getElementById('m-timer-btn').textContent='Resume';}else{mTr=true;document.getElementById('m-timer-btn').textContent='Pause';mTi=setInterval(()=>{mTs--;mTickColour();if(mTs<=0){clearInterval(mTi);mTr=false;document.getElementById('m-timer-btn').textContent='Start';mTs=0;mPlayTimerDone();mToast('⏱ Rest done! Back to work!','success');}mTick();},1000);}}
+function mToggleTimer(){if(mTr){clearInterval(mTi);mTr=false;document.getElementById('m-timer-btn').textContent='Resume';}else{mTr=true;document.getElementById('m-timer-btn').textContent='Pause';mTi=setInterval(()=>{mTs--;mTickColour();if(mTs<=0){clearInterval(mTi);mTr=false;document.getElementById('m-timer-btn').textContent='Start';mTs=0;mRestDone();}mTick();},1000);}}
 function mResetTimer(){clearInterval(mTi);mTr=false;mTs=mTt;document.getElementById('m-timer-btn').textContent='Start';document.getElementById('m-timer-disp').classList.remove('warn','timer-ok','timer-warn','timer-urgent');mTick();}
 function mTick(){const m=Math.floor(mTs/60),s=mTs%60;document.getElementById('m-timer-disp').textContent=`${m}:${String(s).padStart(2,'0')}`;mTickColour();mRestSync();}
 function mFmtClock(t){return Math.floor(t/60)+':'+String(t%60).padStart(2,'0');}
@@ -6228,6 +6233,12 @@ function mRestSync(){
       box.hidden=false;
     } else box.hidden=true;
   }
+}
+function mRestDone(){
+  mPlayTimerDone();
+  mCloseModal('m-timer-modal');
+  mToast('⏱ Rest done! Back to work!','success');
+  try{ const l=document.querySelector('#wm-focus .wmf-log'); if(l) l.focus({preventScroll:true}); }catch(e){ /* nothing to focus */ }
 }
 function mTimerAdjust(d){mTs=Math.max(0,mTs+d);if(d>0)mTt=Math.max(mTt,mTs);mTick();}
 function mTimerSkip(){clearInterval(mTi);mTr=false;const b=document.getElementById('m-timer-btn');if(b)b.textContent='Start';mCloseModal('m-timer-modal');}
@@ -8329,6 +8340,15 @@ function wmFocusRender() {
     );
     return card;
   };
+  const restRow = E('div', 'wmf-rest'); restRow.setAttribute('role', 'group'); restRow.setAttribute('aria-label', 'Rest between sets');
+  restRow.append(E('span', 'wmf-rest-l', 'Rest'));
+  [30, 60, 90, 120].forEach(secs => {
+    const on = (ex.restSecs || WM_DEFAULT_REST) === secs;
+    const rb = E('button', 'wmf-rest-b' + (on ? ' on' : ''), secs + 's'); rb.type = 'button';
+    rb.setAttribute('aria-pressed', on ? 'true' : 'false');
+    rb.addEventListener('click', () => { wmSetRest(ei, secs); wmFocusRender(); });
+    restRow.append(rb);
+  });
   const steppers = E('div', 'wmf-steppers');
   steppers.append(
     stepper(isTime ? 'Seconds' : 'Reps', isTime ? 'time' : 'reps', isTime ? 5 : 1, isTime ? hbNum(set.time) : hbNum(set.reps), ''),
@@ -8356,7 +8376,7 @@ function wmFocusRender() {
   foot.append(btn('wmf-skip', 'Skip set', () => wmFocusSkip(ei, si)), E('div', 'wmf-next', next));
 
   const kept = document.activeElement && box.contains(document.activeElement) ? document.activeElement.className : '';
-  box.replaceChildren(seg, top, name, info, pills, steppers, hint, E('div', 'wmf-spacer'), log, foot);
+  box.replaceChildren(seg, top, name, info, pills, steppers, restRow, hint, E('div', 'wmf-spacer'), log, foot);
   if (kept === 'wmf-log' || kept === 'wmf-log undo') { const l = box.querySelector('.wmf-log'); if (l) l.focus({ preventScroll: true }); }
 }
 
@@ -8959,9 +8979,7 @@ function mQtStartTimer(overrideSecs) {
     if (mTs <= 0) {
       clearInterval(mTi); mTr = false;
       document.getElementById('m-timer-btn').textContent = 'Start';
-      mTs = 0; mPlayTimerDone();
-      mCloseModal('m-timer-modal');
-      mToast('⏱ Rest done! Back to work!', 'success');
+      mTs = 0; mRestDone();
     }
     mTick();
   }, 1000);

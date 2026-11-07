@@ -139,7 +139,10 @@ test.describe('migration and the v1 mirror', () => {
     expect(again.meta.migratedAt).toBe(d.meta.migratedAt);
     // every localStorage key the app uses is on the single list
     const extra = await page.evaluate(() =>
-      Object.keys(localStorage).filter((k) => !globalThis.HBStorage.KEYS.localStorage.includes(k)),
+      Object.keys(localStorage).filter(
+        // hb_wm_view is a UI preference the e2e fixture seeds (workout view); not user data
+        (k) => k !== 'hb_wm_view' && !globalThis.HBStorage.KEYS.localStorage.includes(k),
+      ),
     );
     expect(extra).toEqual([]);
   });
