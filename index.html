@@ -213,6 +213,24 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overs
 .plan-stat-label{font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em}
 .plan-card-footer{padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
 .plan-author{font-size:0.7rem;color:var(--muted)}
+
+/* Plans redesign (Chalk blue) */
+.pl-head{padding:22px 20px 0}
+.pl-eyebrow{font-size:12px;font-weight:600;letter-spacing:0.16em;color:var(--muted);text-transform:uppercase}
+.pl-head h1{font-family:'Oswald',sans-serif;font-weight:600;font-size:2.25rem;line-height:1.05;letter-spacing:0.01em;text-transform:uppercase;margin-top:6px}
+#page-plans .plan-tabs{position:sticky;top:0;margin:14px 0 0;padding:6px 14px;border-bottom:1px solid var(--border)}
+#page-plans .plan-tab{flex:1;min-height:44px;padding:10px 8px;border-radius:12px;border:0;font-size:0.8rem}
+#page-plans .plan-tab.active{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent)}
+#page-plans .plan-card{border-radius:22px}
+#page-plans .plan-card-strip{display:none}
+#page-plans .plan-card-hdr{padding:16px 16px 12px;border-bottom:0}
+#page-plans .plan-card-name{font-weight:600;font-size:1.1rem;line-height:1.15}
+#page-plans .plan-card-stats{background:transparent;border-top:1px solid var(--border);padding:12px 16px}
+#page-plans .plan-card-footer{padding:10px 16px 14px}
+#page-plans .plan-level-badge{--l2:color-mix(in srgb,var(--muted) 40%,transparent);--l3:var(--l2);display:inline-flex;align-items:center;gap:8px;background:transparent;border:0;padding:0;margin-bottom:8px;color:var(--muted);font-size:0.72rem}
+#page-plans .plan-level-badge::before{content:'';width:14px;height:12px;flex:none;background:linear-gradient(var(--text),var(--text)) 0 100%/4px 6px no-repeat,linear-gradient(var(--l2),var(--l2)) 5px 100%/4px 9px no-repeat,linear-gradient(var(--l3),var(--l3)) 10px 100%/4px 12px no-repeat}
+#page-plans .plan-level-badge.intermediate{--l2:var(--text)}
+#page-plans .plan-level-badge.advanced{--l2:var(--text);--l3:var(--text)}
 /* PROFILE */
 #page-profile{padding-bottom:calc(var(--nav-h) + var(--safe-bottom) + 74px)}
 /* FAB tray: only the button and the visible menu items take taps (the empty tray box used to swallow them) */
@@ -594,7 +612,7 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
       <!-- ── SECTION TOGGLE: History / Quick Log ── -->
       <div style="display:flex;gap:0;border-radius:10px;overflow:hidden;border:1px solid var(--border);margin-bottom:14px;">
         <button id="m-home-tab-log" onclick="mHomeTab('log')" style="flex:1;font-family:'Oswald',sans-serif;font-weight:700;font-size:0.75rem;letter-spacing:0.1em;text-transform:uppercase;padding:10px;border:none;cursor:pointer;background:var(--surface2);color:var(--muted);transition:all 0.15s;">Quick Log</button>
-        <button id="m-home-tab-history" onclick="mHomeTab('history')" style="flex:1;font-family:'Oswald',sans-serif;font-weight:700;font-size:0.75rem;letter-spacing:0.1em;text-transform:uppercase;padding:10px;border:none;cursor:pointer;background:var(--accent);color:#000;transition:all 0.15s;">History</button>
+        <button id="m-home-tab-history" onclick="mHomeTab('history')" style="flex:1;font-family:'Oswald',sans-serif;font-weight:700;font-size:0.75rem;letter-spacing:0.1em;text-transform:uppercase;padding:10px;border:none;cursor:pointer;background:var(--accent);color:var(--on-accent);transition:all 0.15s;">History</button>
       </div>
 
       <!-- QUICK LOG SECTION -->
@@ -693,19 +711,20 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
   </div>
   <!-- PLANS -->
   <div id="page-plans" class="page">
-    <div class="page-header" style="padding-bottom:0;">
+    <div class="pl-head">
+      <div class="pl-eyebrow">What to follow</div>
       <h1>Plans</h1>
     </div>
     <div class="plan-tabs">
-      <button class="plan-tab active" onclick="mSwitchPlanTab('calendar',this)">📅 Calendar</button>
-      <button class="plan-tab" data-plan-tab="browse" onclick="mSwitchPlanTab('browse',this)">Browse <span id="m-plan-badge" style="display:none;background:var(--accent);color:#000;font-size:0.7rem;padding:1px 5px;border-radius:8px;margin-left:3px;font-family:'Oswald',sans-serif;font-weight:700;"></span></button>
-      <button class="plan-tab" onclick="mSwitchPlanTab('generate',this)">✨ Generate</button>
+      <button class="plan-tab active" onclick="mSwitchPlanTab('calendar',this)">Calendar</button>
+      <button class="plan-tab" data-plan-tab="browse" onclick="mSwitchPlanTab('browse',this)">Browse <span id="m-plan-badge" style="display:none;background:var(--accent);color:var(--on-accent);font-size:0.7rem;padding:1px 5px;border-radius:8px;margin-left:3px;font-family:'Oswald',sans-serif;font-weight:700;"></span></button>
+      <button class="plan-tab" onclick="mSwitchPlanTab('generate',this)">Generate</button>
     </div>
     <div id="m-plan-tab-calendar" class="plan-tab-content active"><div style="padding:12px 14px;background:var(--bg);" id="m-plan-calendar"></div></div>
     <div id="m-plan-tab-browse" class="plan-tab-content">
       <!-- Browse toggle: My Plans / Expert -->
       <div style="display:flex;gap:0;border-radius:10px;overflow:hidden;border:1px solid var(--border);margin:12px 14px 0;">
-        <button id="m-browse-tab-mine" onclick="mSwitchBrowseTab('mine',this)" style="flex:1;font-family:'Oswald',sans-serif;font-weight:700;font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;padding:9px;border:none;cursor:pointer;background:var(--accent);color:#000;transition:all 0.15s;">My Plans</button>
+        <button id="m-browse-tab-mine" onclick="mSwitchBrowseTab('mine',this)" style="flex:1;font-family:'Oswald',sans-serif;font-weight:700;font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;padding:9px;border:none;cursor:pointer;background:var(--accent);color:var(--on-accent);transition:all 0.15s;">My Plans</button>
         <button id="m-browse-tab-expert" onclick="mSwitchBrowseTab('expert',this)" style="flex:1;font-family:'Oswald',sans-serif;font-weight:700;font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;padding:9px;border:none;cursor:pointer;background:var(--surface2);color:var(--muted);transition:all 0.15s;">Expert Plans</button>
       </div>
       <div id="m-browse-mine" class="plan-cards" style="padding:0 14px;"></div>
@@ -868,7 +887,7 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
     <div class="modal-body" style="padding-top:8px;">
       <!-- Metric toggle -->
       <div style="display:flex;gap:0;border-radius:8px;overflow:hidden;border:1px solid var(--border);margin-bottom:14px;">
-        <button id="ep-tab-weight" onclick="epSetMetric('weight')" style="flex:1;font-family:'Oswald',sans-serif;font-weight:700;font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;padding:9px;border:none;cursor:pointer;background:var(--accent);color:#000;transition:all 0.15s;">Weight</button>
+        <button id="ep-tab-weight" onclick="epSetMetric('weight')" style="flex:1;font-family:'Oswald',sans-serif;font-weight:700;font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;padding:9px;border:none;cursor:pointer;background:var(--accent);color:var(--on-accent);transition:all 0.15s;">Weight</button>
         <button id="ep-tab-reps" onclick="epSetMetric('reps')" style="flex:1;font-family:'Oswald',sans-serif;font-weight:700;font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;padding:9px;border:none;cursor:pointer;background:var(--surface2);color:var(--muted);transition:all 0.15s;">Reps</button>
         <button id="ep-tab-volume" onclick="epSetMetric('volume')" style="flex:1;font-family:'Oswald',sans-serif;font-weight:700;font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;padding:9px;border:none;cursor:pointer;background:var(--surface2);color:var(--muted);transition:all 0.15s;">Volume</button>
       </div>
@@ -2229,9 +2248,9 @@ function mSwitchBrowseTab(tab, btn) {
   document.getElementById('m-browse-mine').style.display = tab === 'mine' ? 'block' : 'none';
   document.getElementById('m-browse-expert').style.display = tab === 'expert' ? 'block' : 'none';
   document.getElementById('m-browse-tab-mine').style.background = tab === 'mine' ? 'var(--accent)' : 'var(--surface2)';
-  document.getElementById('m-browse-tab-mine').style.color = tab === 'mine' ? '#000' : 'var(--muted)';
+  document.getElementById('m-browse-tab-mine').style.color = tab === 'mine' ? 'var(--on-accent)' : 'var(--muted)';
   document.getElementById('m-browse-tab-expert').style.background = tab === 'expert' ? 'var(--accent)' : 'var(--surface2)';
-  document.getElementById('m-browse-tab-expert').style.color = tab === 'expert' ? '#000' : 'var(--muted)';
+  document.getElementById('m-browse-tab-expert').style.color = tab === 'expert' ? 'var(--on-accent)' : 'var(--muted)';
   if (tab === 'mine') mRenderMyPlans();
   if (tab === 'expert') mRenderExpertBrowse();
 }
@@ -4017,7 +4036,7 @@ function mRenderPlanGenerator() {
               {v:'improve_fitness',icon:'❤️',label:'Improve Fitness',  desc:'Mixed rep ranges, full body variety'},
             ].map(g=>`
               <button onclick="spgSetGoal('${g.v}')" data-goal="${g.v}"
-                style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:${(spgState.goal||'')=== g.v ?'rgba(232,77,42,0.08)':'var(--surface2)'};border:2px solid ${(spgState.goal||'')=== g.v ?'var(--accent)':'var(--border)'};border-radius:8px;cursor:pointer;text-align:left;width:100%;transition:all 0.15s;">
+                style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:${(spgState.goal||'')=== g.v ?'color-mix(in srgb,var(--accent) 12%,transparent)':'var(--surface2)'};border:2px solid ${(spgState.goal||'')=== g.v ?'var(--accent)':'var(--border)'};border-radius:8px;cursor:pointer;text-align:left;width:100%;transition:all 0.15s;">
                 <span style="font-size:1.1rem;">${g.icon}</span>
                 <div>
                   <div style="font-family:'Oswald',sans-serif;font-weight:700;font-size:0.82rem;color:var(--text);">${g.label}</div>
@@ -4067,7 +4086,7 @@ function spgSetGoal(v) {
   // Update button styles in place without full re-render
   document.querySelectorAll('#spg-goal-btns button').forEach(btn => {
     const active = btn.dataset.goal === v;
-    btn.style.background = active ? 'rgba(232,77,42,0.08)' : 'var(--surface2)';
+    btn.style.background = active ? 'color-mix(in srgb,var(--accent) 12%,transparent)' : 'var(--surface2)';
     btn.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
   });
 }
@@ -4419,7 +4438,7 @@ function mRenderPlanCalendar() {
 
     if (isToday) {
       border = '2px solid var(--accent)';
-      cellBg = 'rgba(232,77,42,0.06)';
+      cellBg = 'color-mix(in srgb,var(--accent) 10%,transparent)';
     }
 
     if (logged.length > 0) {
