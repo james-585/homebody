@@ -7878,6 +7878,7 @@ function mCloseFabTray() {
 // Full-screen session tracker: scrollable exercise list, per-set tick boxes,
 // editable reps/weight, running stopwatch, RPE capture on finish.
 
+const WM_DEFAULT_REST = 60; // seconds; a product default, changed per exercise with the Rest pills
 let wmLastLogged = '';
 let wmFocus = null; // { ei, si } the set the focus view shows; null = the next set to do
 let wmState = null; // { planCtx, exercises: [{name,sets:[{reps,weight,time,trackType,done}]}], startTime, swInterval, elapsed }
@@ -8072,7 +8073,7 @@ function wmRenderExercise(ex, ei) {
         <div class="wm-ex-meta">${ex.sets.length} sets${ex.unilateral ? ' · L &amp; R' : ''}</div>
         <div style="display:flex;align-items:center;gap:6px;margin-top:5px;">
           <span style="font-size:0.65rem;color:var(--muted);">Rest:</span>
-          ${[30,60,90,120].map(s => `<button class="rest-pill${(ex.restSecs||90)===s?' set':''}"
+          ${[30,60,90,120].map(s => `<button class="rest-pill${(ex.restSecs||WM_DEFAULT_REST)===s?' set':''}"
             onclick="wmSetRest(${ei},${s});event.stopPropagation();">${s}s</button>`).join('')}
         </div>
         ${hintHtml}
@@ -8120,7 +8121,7 @@ function wmHandleSetCompletion(ei, si) {
 
   if (!partners.length) {
     // Standalone exercise — unchanged behavior.
-    mQtStartTimer(ex.restSecs);
+    mQtStartTimer(ex.restSecs || WM_DEFAULT_REST);
     return;
   }
 
@@ -8133,7 +8134,7 @@ function wmHandleSetCompletion(ei, si) {
   });
 
   if (roundComplete) {
-    const restSecs = Math.max(...groupIdx.map(idx => wmState.exercises[idx].restSecs || 90));
+    const restSecs = Math.max(...groupIdx.map(idx => wmState.exercises[idx].restSecs || WM_DEFAULT_REST));
     mQtStartTimer(restSecs);
   } else {
     mQtStartTimer(SUPERSET_TRANSITION_SECS);
