@@ -633,6 +633,45 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
 .timer-btn{min-height:60px;border-radius:18px}
 .timer-preset{min-height:44px;border-radius:14px}
 .timer-display{font-variant-numeric:tabular-nums}
+
+/* Focus view: one exercise at a time (Chalk blue) */
+.wm-overlay .wm-focus{display:none;flex:1;min-height:0;flex-direction:column;padding:6px 20px calc(env(safe-area-inset-bottom,0px) + 16px);overflow-y:auto;-webkit-overflow-scrolling:touch}
+.wm-overlay.wm-focus-mode .wm-focus{display:flex}
+.wm-overlay.wm-focus-mode .wm-body{display:none}
+.wm-overlay.wm-focus-mode .wm-prog-wrap{display:none}
+.wm-view-btn{align-self:flex-start;min-height:44px;padding:0 14px;border-radius:14px;background:transparent;border:1.5px solid #6A7584;color:var(--text);font-family:'Oswald',sans-serif;font-weight:600;font-size:0.8rem;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer}
+.wm-body > .wm-view-btn{margin:0 0 12px}
+.wmf-seg{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:5px;margin:6px 0 14px}
+.wmf-seg-i{height:5px;border-radius:3px;background:var(--surface2)}
+.wmf-seg-i.done{background:var(--accent)}
+.wmf-seg-i.now{background:var(--text)}
+.wmf-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.wmf-eyebrow{font-size:12px;font-weight:600;letter-spacing:0.16em;color:var(--muted);text-transform:uppercase}
+.wmf-name{font-family:'Oswald',sans-serif;font-weight:700;font-size:2.2rem;line-height:1.05;text-transform:uppercase;margin-top:6px;overflow-wrap:anywhere}
+.wmf-info{align-self:flex-start;min-height:44px;margin-top:2px;padding:0;background:none;border:0;color:var(--muted);font-size:0.85rem;font-weight:600;text-decoration:underline;cursor:pointer}
+.wmf-pills{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px;margin-top:8px}
+.wmf-pill{min-height:56px;border-radius:16px;background:var(--surface);border:1px solid var(--border);color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;padding:0 2px}
+.wmf-pill-l{font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase}
+.wmf-pill-v{font-family:'Oswald',sans-serif;font-weight:600;font-size:0.95rem;color:var(--text)}
+.wmf-pill.now{border:2px solid var(--accent);color:var(--text)}
+.wmf-pill.done{background:color-mix(in srgb,var(--signal) 14%,var(--surface));border-color:var(--signal);color:var(--text)}
+.wmf-steppers{display:flex;flex-direction:column;gap:10px;margin-top:16px}
+.wmf-card{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:10px;display:flex;align-items:center;justify-content:space-between;gap:6px}
+.wmf-step{width:64px;height:64px;flex:none;border-radius:20px;background:var(--surface2);border:0;color:var(--text);font-size:2rem;line-height:1;cursor:pointer}
+.wmf-step:active{transform:scale(0.94)}
+.wmf-mid{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center}
+.wmf-lbl{font-size:11px;font-weight:600;letter-spacing:0.14em;color:var(--muted);text-transform:uppercase}
+.wmf-val{width:100%;background:transparent;border:0;outline:0;color:var(--text);text-align:center;font-family:'Oswald',sans-serif;font-weight:700;font-size:3.2rem;line-height:1.1;font-variant-numeric:tabular-nums;-moz-appearance:textfield;appearance:textfield}
+.wmf-val::-webkit-outer-spin-button,.wmf-val::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.wmf-val:focus{box-shadow:0 2px 0 var(--accent)}
+.wmf-hint{margin-top:12px;font-size:0.875rem;color:var(--muted);text-align:center;min-height:1.2em}
+.wmf-spacer{flex:1;min-height:12px}
+.wmf-log{min-height:72px;border:0;border-radius:22px;background:var(--accent);color:var(--on-accent);font-family:'Oswald',sans-serif;font-weight:700;font-size:1.4rem;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;width:100%}
+.wmf-log.undo{background:transparent;color:var(--text);border:1.5px solid #6A7584}
+.wmf-log:active{transform:scale(0.98)}
+.wmf-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px}
+.wmf-skip{min-height:44px;padding:0 4px;background:none;border:0;color:var(--muted);font-size:0.9rem;font-weight:600;cursor:pointer}
+.wmf-next{font-size:0.8rem;color:var(--muted);text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -7771,6 +7810,7 @@ function mCloseFabTray() {
 // Full-screen session tracker: scrollable exercise list, per-set tick boxes,
 // editable reps/weight, running stopwatch, RPE capture on finish.
 
+let wmFocus = null; // { ei, si } the set the focus view shows; null = the next set to do
 let wmState = null; // { planCtx, exercises: [{name,sets:[{reps,weight,time,trackType,done}]}], startTime, swInterval, elapsed }
 
 function mStartWorkoutMode(day, planName) {
@@ -7830,6 +7870,7 @@ function mStartWorkoutMode(day, planName) {
     }
   }
 
+  wmFocus = null;
   wmRender();
   // Stopwatch starts manually via the header button
 }
@@ -7841,7 +7882,7 @@ function wmRender() {
 
   const overlay = document.createElement('div');
   overlay.id = 'wm-overlay';
-  overlay.className = 'wm-overlay';
+  overlay.className = 'wm-overlay' + (wmViewPref() === 'list' ? '' : ' wm-focus-mode');
 
   // Total sets progress
   const totalSets = wmState.exercises.reduce((s, e) => s + e.sets.length, 0);
@@ -7863,11 +7904,13 @@ function wmRender() {
         <button class="wm-finish-btn" onclick="wmFinish()">Finish</button>
       </div>
     </div>
-    <div style="position:relative;padding-top:16px;">
+    <div class="wm-prog-wrap" style="position:relative;padding-top:16px;">
       <div style="position:absolute;right:0;top:0;font-family:'Oswald',sans-serif;font-weight:700;font-size:0.62rem;color:var(--muted);letter-spacing:0.06em;">${pct}%</div>
       <div class="wm-progress"><div class="wm-progress-fill" id="wm-progress-fill" style="width:${pct}%"></div></div>
     </div>
+    <div id="wm-focus" class="wm-focus" aria-live="polite"></div>
     <div class="wm-body" id="wm-body">
+      <button type="button" class="wm-view-btn" onclick="wmSetView('focus')">One at a time</button>
       ${wmRenderExerciseList()}
       <div style="padding:8px 0 4px;text-align:center;">
         <button onclick="wmAddExercise()" style="background:none;border:1px dashed var(--border);color:var(--muted);border-radius:10px;padding:12px;width:100%;font-size:0.78rem;font-family:'Inter',sans-serif;cursor:pointer;">+ Add Exercise</button>
@@ -7876,6 +7919,7 @@ function wmRender() {
 
   document.body.appendChild(overlay);
 
+  wmFocusRender();
   // Update stopwatch display and highlight first set
   wmTickDisplay();
   setTimeout(() => wmHighlightNextSet(), 50);
@@ -8098,6 +8142,151 @@ function wmUpdateSetUI(ei, si) {
   }
   // Highlight the next unticked set across all exercises
   wmHighlightNextSet();
+  if (setDone) wmFocus = null; // advance to the next set after a log
+  wmFocusRender();
+}
+
+
+// ─── FOCUS VIEW: one exercise at a time (docs: design canvas "Live workout") ───
+// A presentation over the same wmState: every log goes through wmTickSet / wmTickSide /
+// wmEditSet, so rest timers, supersets, saving and the list view behave exactly as before.
+function wmViewPref() { try { return localStorage.getItem('hb_wm_view') === 'list' ? 'list' : 'focus'; } catch (e) { return 'focus'; } }
+function wmSetView(v) {
+  try { localStorage.setItem('hb_wm_view', v === 'list' ? 'list' : 'focus'); } catch (e) { /* not saved */ }
+  const o = document.getElementById('wm-overlay');
+  if (o) o.classList.toggle('wm-focus-mode', v !== 'list');
+  wmFocusRender();
+}
+// The next set to do, in the order wmHighlightNextSet uses (superset rounds alternate).
+function wmNextTarget() {
+  if (!wmState) return null;
+  const seen = new Set();
+  for (let ei = 0; ei < wmState.exercises.length; ei++) {
+    const ex = wmState.exercises[ei];
+    const group = ex.supersetGroup;
+    if (group) {
+      if (seen.has(group)) continue;
+      const members = wmGetSupersetGroupIndices(group);
+      if (members.length > 1) {
+        seen.add(group);
+        const rounds = Math.max(...members.map(i => wmState.exercises[i].sets.length));
+        for (let si = 0; si < rounds; si++) {
+          for (const i of members) {
+            const st = wmState.exercises[i].sets[si];
+            if (st && !wmSetDone(st)) return { ei: i, si };
+          }
+        }
+        continue;
+      }
+    }
+    for (let si = 0; si < ex.sets.length; si++) if (!wmSetDone(ex.sets[si])) return { ei, si };
+  }
+  return null;
+}
+function wmFocusStep(ei, si, field, delta) {
+  if (!wmState) return;
+  const set = wmState.exercises[ei].sets[si];
+  const cur = field === 'weight' ? hbNum(set.weight) : field === 'time' ? hbNum(set.time) : hbNum(set.reps);
+  const next = Math.max(0, Math.round((cur + delta) * 100) / 100);
+  wmEditSet(ei, si, field, String(next));
+  wmFocusRender();
+}
+function wmFocusSkip(ei, si) {
+  if (!wmState) return;
+  const flat = [];
+  wmState.exercises.forEach((ex, i) => ex.sets.forEach((st, j) => { if (!wmSetDone(st)) flat.push({ ei: i, si: j }); }));
+  if (flat.length < 2) return;
+  const at = flat.findIndex(f => f.ei === ei && f.si === si);
+  wmFocus = flat[(at + 1) % flat.length];
+  wmFocusRender();
+}
+function wmFocusRender() {
+  const box = document.getElementById('wm-focus');
+  if (!box || !wmState) return;
+  const E = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const btn = (cls, text, on, label) => { const b = E('button', cls, text); b.type = 'button'; if (label) b.setAttribute('aria-label', label); b.addEventListener('click', on); return b; };
+  const exs = wmState.exercises;
+  let t = wmFocus && exs[wmFocus.ei] && exs[wmFocus.ei].sets[wmFocus.si] ? wmFocus : wmNextTarget();
+  if (!t) { // everything is logged
+    box.replaceChildren(
+      E('div', 'wmf-eyebrow', 'All sets logged'),
+      E('div', 'wmf-name', 'Nice work'),
+      btn('wmf-log', 'Finish workout', () => wmFinish()),
+      btn('wm-view-btn', 'Review in list', () => wmSetView('list')),
+    );
+    return;
+  }
+  const { ei, si } = t;
+  const ex = exs[ei], set = ex.sets[si];
+  const isTime = set.trackType === 'time';
+  const done = wmSetDone(set);
+
+  // progress: one segment per exercise
+  const seg = E('div', 'wmf-seg'); seg.setAttribute('role', 'img'); seg.setAttribute('aria-label', 'Exercise ' + (ei + 1) + ' of ' + exs.length);
+  exs.forEach((x, i) => seg.append(E('div', 'wmf-seg-i' + (wmAllDone(x.sets) ? ' done' : i === ei ? ' now' : ''))));
+  const top = E('div', 'wmf-top');
+  top.append(E('div', 'wmf-eyebrow', 'Exercise ' + (ei + 1) + ' of ' + exs.length), btn('wm-view-btn', 'List', () => wmSetView('list')));
+  const name = E('div', 'wmf-name', ex.name);
+  const info = btn('wmf-info', 'How to', () => wmShowExInfo(ex.name), 'How to do ' + ex.name);
+
+  // set pills
+  const pills = E('div', 'wmf-pills'); pills.setAttribute('role', 'group'); pills.setAttribute('aria-label', 'Sets');
+  ex.sets.forEach((st, j) => {
+    const d = wmSetDone(st), cur = j === si;
+    const val = st.trackType === 'time' ? hbNum(st.time) + 's' : hbNum(st.reps) + ' × ' + hbNum(st.weight);
+    const b = E('button', 'wmf-pill' + (d ? ' done' : '') + (cur ? ' now' : ''));
+    b.type = 'button';
+    b.setAttribute('aria-label', 'Set ' + (j + 1) + (d ? ', logged' : cur ? ', current' : ', to do'));
+    if (cur) b.setAttribute('aria-current', 'true');
+    b.append(E('span', 'wmf-pill-l', 'Set ' + (j + 1)), E('span', 'wmf-pill-v', d ? val + ' ✓' : cur ? 'now' : val));
+    b.addEventListener('click', () => { wmFocus = { ei, si: j }; wmFocusRender(); });
+    pills.append(b);
+  });
+
+  // steppers
+  const stepper = (label, field, step, value, unit) => {
+    const card = E('div', 'wmf-card');
+    const inp = E('input', 'wmf-val'); inp.type = 'number'; inp.min = '0'; inp.step = String(step); inp.inputMode = 'decimal';
+    inp.value = value ? String(value) : '';
+    inp.placeholder = '0'; inp.setAttribute('aria-label', label + (unit ? ' in ' + unit : ''));
+    inp.addEventListener('change', () => { wmEditSet(ei, si, field, inp.value); wmFocusRender(); });
+    const mid = E('div', 'wmf-mid'); mid.append(E('div', 'wmf-lbl', label + (unit ? ' · ' + unit : '')), inp);
+    card.append(
+      btn('wmf-step', '−', () => wmFocusStep(ei, si, field, -step), 'Decrease ' + label.toLowerCase()),
+      mid,
+      btn('wmf-step', '+', () => wmFocusStep(ei, si, field, step), 'Increase ' + label.toLowerCase()),
+    );
+    return card;
+  };
+  const steppers = E('div', 'wmf-steppers');
+  steppers.append(
+    stepper(isTime ? 'Seconds' : 'Reps', isTime ? 'time' : 'reps', isTime ? 5 : 1, isTime ? hbNum(set.time) : hbNum(set.reps), ''),
+    stepper('Weight', 'weight', 2.5, hbNum(set.weight), ex.unilateral ? 'kg per hand' : 'kg'),
+  );
+
+  // hint
+  let hintText = '';
+  try { const h = mGetSuggestion(ex.name); if (h && h.text) hintText = h.text; } catch (e) { /* no history */ }
+  const hint = E('div', 'wmf-hint', hintText);
+
+  // primary action: one tap logs the set (unilateral: left then right)
+  let label, act;
+  if (ex.unilateral) {
+    const side = !set.doneL ? 'L' : 'R';
+    if (done) { label = 'Undo set ' + (si + 1); act = () => { wmTickSide(ei, si, 'R'); wmTickSide(ei, si, 'L'); }; }
+    else { label = 'Log set ' + (si + 1) + (set.doneL ? ' · right' : ' · left'); act = () => wmTickSide(ei, si, side); }
+  } else {
+    label = done ? 'Undo set ' + (si + 1) : 'Log set ' + (si + 1);
+    act = () => wmTickSet(ei, si);
+  }
+  const log = btn('wmf-log' + (done ? ' undo' : ''), label, act);
+  const next = exs[ei + 1] ? 'Next: ' + exs[ei + 1].name : 'Last exercise';
+  const foot = E('div', 'wmf-foot');
+  foot.append(btn('wmf-skip', 'Skip set', () => wmFocusSkip(ei, si)), E('div', 'wmf-next', next));
+
+  const kept = document.activeElement && box.contains(document.activeElement) ? document.activeElement.className : '';
+  box.replaceChildren(seg, top, name, info, pills, steppers, hint, E('div', 'wmf-spacer'), log, foot);
+  if (kept === 'wmf-log' || kept === 'wmf-log undo') { const l = box.querySelector('.wmf-log'); if (l) l.focus({ preventScroll: true }); }
 }
 
 function wmHighlightNextSet() {
