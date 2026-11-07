@@ -17,7 +17,7 @@
 <title>HomeBody</title>
 <style>@font-face{font-family:'Oswald';font-style:normal;font-weight:400 700;font-display:swap;src:url(fonts/oswald-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 @font-face{font-family:'Inter';font-style:normal;font-weight:400 600;font-display:swap;src:url(fonts/inter-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
-:root{--bg:#0C0E12;--surface:#161A20;--surface2:#1E232B;--border:#262C35;--accent:#6AA7FF;--accent2:#A8B2C0;--today:#C97D3A;--text:#F1F4F8;--muted:#A8B2C0;--red:#FF6B7A;--green:#5A9E6E;--blue:#7EB8D4;--signal:#FF8A4C;--warning:#F5C451;--action:#6AA7FF;--danger:#FF6B7A;--hero-bg:rgba(106,167,255,0.07);--hero-border:rgba(106,167,255,0.35);--surface3:#1E232B;--on-accent:#0C0E12;--nav-h:64px;--safe-bottom:env(safe-area-inset-bottom,0px)}*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;}
+:root{--bg:#0C0E12;--surface:#161A20;--surface2:#1E232B;--border:#262C35;--accent:#6AA7FF;--accent2:#A8B2C0;--today:#F1F4F8;--text:#F1F4F8;--muted:#A8B2C0;--red:#FF6B7A;--green:#5A9E6E;--blue:#7EB8D4;--signal:#FF8A4C;--warning:#F5C451;--action:#6AA7FF;--danger:#FF6B7A;--hero-bg:rgba(106,167,255,0.07);--hero-border:rgba(106,167,255,0.35);--surface3:#1E232B;--on-accent:#0C0E12;--nav-h:64px;--safe-bottom:env(safe-area-inset-bottom,0px)}*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;}
 html,body{height:100%;overflow:hidden}
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overscroll-behavior:none;-webkit-text-size-adjust:100%;}
 /* Momentum scrolling for all scrollable areas */
@@ -81,11 +81,11 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overs
 .home-greeting{font-family:'Oswald',sans-serif;font-weight:700;font-size:1.3rem;letter-spacing:0.03em;text-transform:uppercase;margin-bottom:2px}
 .home-sub{font-size:0.75rem;color:var(--muted);margin-bottom:16px}
 .home-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-.home-stat{background:rgba(232,77,42,0.06);border:1px solid rgba(232,77,42,0.15);border-radius:10px;padding:12px 14px}
-.home-stat-val{font-family:'Oswald',sans-serif;font-weight:700;font-size:2rem;color:var(--accent);line-height:1}
-.home-stat-label{font-size:0.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-top:3px}
-.home-stat.orange{background:rgba(255,92,53,0.06);border-color:rgba(255,92,53,0.15)}
-.home-stat.orange .home-stat-val{color:var(--accent2)}
+.home-stat{background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:14px 16px}
+.home-stat-val{font-family:'Oswald',sans-serif;font-weight:700;font-size:2.1rem;color:var(--text);line-height:1.05;font-variant-numeric:tabular-nums}
+.home-stat-label{font-size:0.68rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.12em;margin-top:3px}
+.home-stat.orange{background:var(--surface);border-color:var(--border)}
+.home-stat.orange .home-stat-val{color:var(--text)}
 .quick-log-section{padding:16px 14px}
 .section-title{font-family:'Oswald',sans-serif;font-weight:700;font-size:0.85rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px}
 .section-title::before{content:'';width:3px;height:16px;background:var(--accent);border-radius:2px;display:block}
@@ -248,6 +248,14 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overs
 #page-exercises .ex-card-meta{margin-bottom:0}
 #page-exercises .ex-card-actions{flex-direction:row;align-items:center;gap:6px}
 #page-exercises .ex-card-actions button{min-height:44px;min-width:44px}
+
+/* Progress redesign (Chalk blue) */
+.pr-note{display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-size:13px;line-height:1.4;color:var(--text)}
+.pr-note svg{flex:none;margin-top:1px}
+#page-progress .card{border-radius:26px;padding:16px 18px}
+#page-progress .card-title{font-size:12px;font-weight:600;letter-spacing:0.16em}
+#page-progress .week-row{height:70px;gap:10px}
+#page-progress .week-bar{border-radius:8px;border-color:transparent}
 /* PROFILE */
 #page-profile{padding-bottom:calc(var(--nav-h) + var(--safe-bottom) + 74px)}
 /* FAB tray: only the button and the visible menu items take taps (the empty tray box used to swallow them) */
@@ -462,11 +470,11 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
 
 /* Workout grade badge */
 .grade-circle{width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Oswald',sans-serif;font-weight:700;font-size:1.8rem;flex-shrink:0;border:3px solid;}
-.grade-A{background:rgba(90,158,110,0.12);border-color:var(--green);color:var(--green);}
-.grade-B{background:rgba(232,77,42,0.12);border-color:var(--accent);color:var(--accent);}
-.grade-C{background:rgba(255,184,0,0.12);border-color:var(--warning);color:var(--warning);}
-.grade-D{background:rgba(255,92,53,0.12);border-color:var(--accent2);color:var(--accent2);}
-.grade-F{background:rgba(255,64,96,0.12);border-color:var(--red);color:var(--red);}
+.grade-A{background:color-mix(in srgb,var(--signal) 14%,transparent);border-color:var(--signal);color:var(--signal);}
+.grade-B{background:color-mix(in srgb,var(--accent) 14%,transparent);border-color:var(--accent);color:var(--accent);}
+.grade-C{background:color-mix(in srgb,var(--warning) 14%,transparent);border-color:var(--warning);color:var(--warning);}
+.grade-D{background:color-mix(in srgb,var(--accent2) 14%,transparent);border-color:var(--accent2);color:var(--accent2);}
+.grade-F{background:color-mix(in srgb,var(--red) 14%,transparent);border-color:var(--red);color:var(--red);}
 
 /* Muscle recovery tiles */
 .muscle-tile{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;position:relative;overflow:hidden;}
@@ -506,10 +514,11 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
   --hero-bg: rgba(37,89,168,0.06);
   --hero-border: rgba(37,89,168,0.25);
   --on-accent: #FFFFFF;
+  --today: #11151B;
 }
 
 /* Volume milestone badges */
-.milestone-badge{display:flex;align-items:center;gap:10px;padding:12px 14px;background:linear-gradient(135deg,rgba(232,77,42,0.08),rgba(232,77,42,0.02));border:1px solid rgba(232,77,42,0.2);border-radius:12px;margin-bottom:8px;}
+.milestone-badge{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:16px;margin-bottom:8px;}
 .milestone-icon{font-size:1.5rem;flex-shrink:0;}
 .milestone-locked{opacity:0.35;filter:grayscale(1);}
 .milestone-locked .milestone-icon{filter:grayscale(1);}
@@ -682,8 +691,12 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
   </div>
   <!-- LOG -->
   <div id="page-progress" class="page">
-    <div class="page-header"><h1>Progress</h1><p>Your training analytics</p></div>
-    <div class="quick-log-section" style="padding-top:0;">
+    <div class="pl-head">
+      <div class="pl-eyebrow">Your training</div>
+      <h1>Progress</h1>
+      <p class="pr-note" role="note"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="12" y1="7.5" x2="12" y2="7.6"/></svg><span>Figures marked est. are estimates. Pain or dizziness means stop, and see a professional.</span></p>
+    </div>
+    <div class="quick-log-section" style="padding-top:12px;">
       <!-- This Week + Adherence -->
       <div class="card" style="margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -696,7 +709,7 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
       <!-- Stats row -->
       <div class="home-stats" style="margin-bottom:12px;">
         <div class="home-stat"><div class="home-stat-val" id="hm-workouts-p">0</div><div class="home-stat-label">Workouts</div></div>
-        <div class="home-stat orange"><div class="home-stat-val" id="hm-calories-p">0</div><div class="home-stat-label">kcal Burned</div></div>
+        <div class="home-stat orange"><div class="home-stat-val" id="hm-calories-p">0</div><div class="home-stat-label">kcal burned (est.)</div></div>
       </div>
       <!-- Workout Grade -->
       <div class="card" style="margin-bottom:12px;">
@@ -724,7 +737,7 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
       </div>
       <!-- Milestones -->
       <div class="card" style="margin-bottom:12px;">
-        <div class="card-title">🏆 Milestones</div>
+        <div class="card-title">Milestones</div>
         <div id="m-milestones"></div>
       </div>
     </div>
@@ -5701,10 +5714,10 @@ function mRenderWorkoutGrade() {
   ];
 
   content.innerHTML = `
-    <div style="display:flex;align-items:center;gap:16px;padding:14px 16px;background:rgba(${grade.color.includes('00e5')?'0,229,200':grade.color.includes('00d6')?'0,214,143':grade.color.includes('ffb8')?'255,184,0':grade.color.includes('ff40')?'255,64,96':'0,229,200'},0.07);border-radius:10px;margin-bottom:12px;">
+    <div style="display:flex;align-items:center;gap:16px;padding:14px 16px;background:var(--surface2);border-radius:18px;margin-bottom:12px;">
       <div class="grade-circle grade-${grade.letter.replace('+','').replace('-','')}" style="flex-shrink:0;">${grade.letter}</div>
       <div style="flex:1;min-width:0;">
-        <div style="font-family:'Oswald',sans-serif;font-weight:700;font-size:var(--fs-lg);color:${grade.color};letter-spacing:0.04em;line-height:1;">${grade.pct}<span style="font-size:var(--fs-sm);opacity:0.7;">/100</span></div>
+        <div style="font-family:'Oswald',sans-serif;font-weight:700;font-size:var(--fs-lg);color:var(--text);letter-spacing:0.04em;line-height:1;">${grade.pct}<span style="font-size:var(--fs-sm);opacity:0.7;">/100</span></div>
         <div style="font-size:var(--fs-base);color:var(--text);margin-top:3px;font-weight:500;line-height:1.3;">${escHtml(grade.tagline)}</div>
         <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:4px;">${workoutsToGrade.length>1?workoutsToGrade.map(w=>escHtml(w.name)).join(' + '):escHtml(workoutsToGrade[0].name)}</div>
       </div>
@@ -5724,7 +5737,7 @@ function mRenderWorkoutGrade() {
         </div>`;
       }).join('')}
     </div>
-    <div style="font-size:0.68rem;color:var(--muted);font-style:italic;line-height:1.5;border-top:1px solid var(--border);padding-top:8px;">Grade reflects a PT's assessment of session structure, muscle balance, and loading quality.</div>
+    <div style="font-size:0.68rem;color:var(--muted);font-style:italic;line-height:1.5;border-top:1px solid var(--border);padding-top:8px;">The grade is a guide to the session's structure, not a medical or performance rating.</div>
   `;
 }
 
