@@ -672,6 +672,35 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
 .wmf-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px}
 .wmf-skip{min-height:44px;padding:0 4px;background:none;border:0;color:var(--muted);font-size:0.9rem;font-weight:600;cursor:pointer}
 .wmf-next{font-size:0.8rem;color:var(--muted);text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Rest screen (Chalk blue) */
+#m-timer-modal .rest-sheet{border-radius:28px 28px 0 0;padding:6px 20px calc(env(safe-area-inset-bottom,0px) + 18px);max-height:96vh;overflow-y:auto}
+.rest-head{text-align:center;display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.rest-eyebrow{font-size:12px;font-weight:600;letter-spacing:0.16em;color:var(--muted);text-transform:uppercase}
+.rest-sub{font-size:0.95rem;color:var(--text);min-height:1.2em}
+.rest-ring{position:relative;width:272px;height:272px;margin:18px auto 0}
+.rest-ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
+.rest-ring-bg,.rest-ring-fg{fill:none;stroke-width:12}
+.rest-ring-bg{stroke:var(--surface2)}
+.rest-ring-fg{stroke:var(--accent);stroke-linecap:round;transition:stroke-dashoffset 0.9s linear}
+.rest-ring-fg.urgent{stroke:var(--danger)}
+.rest-ring-in{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+#m-timer-modal .timer-display{font-size:5.4rem;padding:0;color:var(--text)}
+#m-timer-modal .timer-display.timer-warn{color:var(--warning)}
+#m-timer-modal .timer-display.timer-urgent{color:var(--danger)}
+.rest-of{font-size:0.85rem;color:var(--muted)}
+.rest-adj{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:20px}
+.rest-adj-b{min-height:60px;border-radius:18px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:'Oswald',sans-serif;font-weight:600;font-size:1.1rem;letter-spacing:0.06em;cursor:pointer}
+.rest-next{margin-top:16px;background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.rest-next-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.rest-next-name{font-family:'Oswald',sans-serif;font-weight:600;font-size:1.25rem;text-transform:uppercase}
+.rest-next-meta{font-size:0.875rem;color:var(--muted)}
+.rest-more{margin-top:12px}
+.rest-more summary{min-height:44px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:0.9rem;font-weight:600;cursor:pointer;list-style:none}
+.rest-more summary::-webkit-details-marker{display:none}
+.rest-more[open] summary{margin-bottom:8px}
+.rest-more .timer-presets{gap:6px}
+.rest-skip{margin-top:14px;width:100%;min-height:72px;border:0;border-radius:22px;background:var(--accent);color:var(--on-accent);font-family:'Oswald',sans-serif;font-weight:700;font-size:1.4rem;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer}
 </style>
 </head>
 <body>
@@ -1285,17 +1314,32 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
     <div class="modal-footer" style="flex-direction:column;gap:8px;"><div style="display:flex;gap:8px;width:100%;"><button class="btn-secondary" style="flex:1;" onclick="mCloseModal('m-edit-modal')">Cancel</button><button class="btn-primary" style="flex:2;" onclick="mSaveEdit()">Save Changes</button></div><button class="btn-danger" style="width:100%;" id="med-delete-btn">🗑 Delete Workout</button></div>
   </div>
 </div>
-<!-- REST TIMER MODAL -->
+<!-- REST TIMER MODAL (design canvas "Rest timer"); ids kept: m-timer-modal, m-timer-disp, m-timer-btn -->
 <div class="modal-overlay" id="m-timer-modal" style="z-index:9700;" onclick="mCloseModal('m-timer-modal',event)">
-  <div class="modal-sheet"><div class="modal-handle"></div>
-    <div class="modal-hdr"><div class="modal-title">Rest Timer</div><button class="modal-close" onclick="mCloseModal('m-timer-modal')">✕</button></div>
-    <div class="modal-body" style="text-align:center;">
-      <div class="timer-display" id="m-timer-disp">1:30</div>
+  <div class="modal-sheet rest-sheet" role="dialog" aria-label="Rest timer"><div class="modal-handle"></div>
+    <div class="rest-head">
+      <div class="rest-eyebrow">Rest</div>
+      <div class="rest-sub" id="m-rest-sub"></div>
+    </div>
+    <div class="rest-ring" role="timer" aria-live="off" id="m-rest-ring">
+      <svg width="272" height="272" viewBox="0 0 272 272" aria-hidden="true"><circle cx="136" cy="136" r="124" class="rest-ring-bg"/><circle cx="136" cy="136" r="124" class="rest-ring-fg" id="m-rest-arc" stroke-dasharray="779.2" stroke-dashoffset="0"/></svg>
+      <div class="rest-ring-in"><div class="timer-display" id="m-timer-disp">1:30</div><div class="rest-of" id="m-rest-of"></div></div>
+    </div>
+    <div class="rest-adj">
+      <button type="button" class="rest-adj-b" onclick="mTimerAdjust(-15)" aria-label="Take 15 seconds off">− 15 s</button>
+      <button type="button" class="rest-adj-b" onclick="mTimerAdjust(15)" aria-label="Add 15 seconds">+ 15 s</button>
+    </div>
+    <div class="rest-next" id="m-rest-next" hidden>
+      <div class="rest-eyebrow">Up next</div>
+      <div class="rest-next-row"><div class="rest-next-name" id="m-rest-next-name"></div><div class="rest-next-meta" id="m-rest-next-meta"></div></div>
+    </div>
+    <details class="rest-more"><summary>Timer options</summary>
       <div class="timer-presets">
         <button class="timer-preset" onclick="mSetTimer(30)">30s</button><button class="timer-preset" onclick="mSetTimer(45)">45s</button><button class="timer-preset" onclick="mSetTimer(60)">1m</button><button class="timer-preset active" onclick="mSetTimer(90)">90s</button><button class="timer-preset" onclick="mSetTimer(120)">2m</button><button class="timer-preset" onclick="mSetTimer(180)">3m</button><button class="timer-preset" onclick="mSetTimer(300)">5m</button>
       </div>
       <div class="timer-btns"><button class="timer-btn start" id="m-timer-btn" onclick="mToggleTimer()">Start</button><button class="timer-btn reset" onclick="mResetTimer()">Reset</button></div>
-    </div>
+    </details>
+    <button type="button" class="rest-skip" id="m-rest-skip" onclick="mTimerSkip()">Skip rest</button>
   </div>
 </div>
 <datalist id="m-ex-suggestions"></datalist>
@@ -6162,7 +6206,31 @@ let mTs=30,mTt=30,mTr=false,mTi=null;
 function mSetTimer(s){clearInterval(mTi);mTr=false;mTs=s;mTt=s;document.getElementById('m-timer-btn').textContent='Start';document.getElementById('m-timer-disp').classList.remove('warn','timer-ok','timer-warn','timer-urgent');mTick();document.querySelectorAll('.timer-preset').forEach(b=>b.classList.remove('active'));event.target.classList.add('active');}
 function mToggleTimer(){if(mTr){clearInterval(mTi);mTr=false;document.getElementById('m-timer-btn').textContent='Resume';}else{mTr=true;document.getElementById('m-timer-btn').textContent='Pause';mTi=setInterval(()=>{mTs--;mTickColour();if(mTs<=0){clearInterval(mTi);mTr=false;document.getElementById('m-timer-btn').textContent='Start';mTs=0;mPlayTimerDone();mToast('⏱ Rest done! Back to work!','success');}mTick();},1000);}}
 function mResetTimer(){clearInterval(mTi);mTr=false;mTs=mTt;document.getElementById('m-timer-btn').textContent='Start';document.getElementById('m-timer-disp').classList.remove('warn','timer-ok','timer-warn','timer-urgent');mTick();}
-function mTick(){const m=Math.floor(mTs/60),s=mTs%60;document.getElementById('m-timer-disp').textContent=`${m}:${String(s).padStart(2,'0')}`;mTickColour();}
+function mTick(){const m=Math.floor(mTs/60),s=mTs%60;document.getElementById('m-timer-disp').textContent=`${m}:${String(s).padStart(2,'0')}`;mTickColour();mRestSync();}
+function mFmtClock(t){return Math.floor(t/60)+':'+String(t%60).padStart(2,'0');}
+// Rest screen: ring, "of", up-next and the primary label follow the timer (text nodes only).
+function mRestSync(){
+  const arc=document.getElementById('m-rest-arc'); if(!arc) return;
+  const total=Math.max(1,mTt); const frac=Math.min(1,Math.max(0,mTs/total));
+  arc.setAttribute('stroke-dashoffset',String(779.2*(1-frac)));
+  arc.classList.toggle('urgent',mTs<=5);
+  const of=document.getElementById('m-rest-of'); if(of) of.textContent='of '+mFmtClock(mTt);
+  const ring=document.getElementById('m-rest-ring'); if(ring) ring.setAttribute('aria-label','Rest, '+Math.floor(mTs/60)+' minutes '+(mTs%60)+' seconds left');
+  const skip=document.getElementById('m-rest-skip'); if(skip) skip.textContent=mTr?'Skip rest':'Close';
+  const sub=document.getElementById('m-rest-sub'); if(sub) sub.textContent=(typeof wmState!=='undefined'&&wmState&&typeof wmLastLogged==='string')?wmLastLogged:'';
+  const box=document.getElementById('m-rest-next');
+  let t=null; try{ t=(typeof wmState!=='undefined'&&wmState)?wmNextTarget():null; }catch(e){ t=null; }
+  if(box){
+    if(t){
+      const ex=wmState.exercises[t.ei], st=ex.sets[t.si];
+      document.getElementById('m-rest-next-name').textContent=ex.name;
+      document.getElementById('m-rest-next-meta').textContent='Set '+(t.si+1)+' of '+ex.sets.length+' \u00b7 '+(st.trackType==='time'?hbNum(st.time)+' s':hbNum(st.reps)+' \u00d7 '+hbNum(st.weight)+' kg');
+      box.hidden=false;
+    } else box.hidden=true;
+  }
+}
+function mTimerAdjust(d){mTs=Math.max(0,mTs+d);if(d>0)mTt=Math.max(mTt,mTs);mTick();}
+function mTimerSkip(){clearInterval(mTi);mTr=false;const b=document.getElementById('m-timer-btn');if(b)b.textContent='Start';mCloseModal('m-timer-modal');}
 function mTickColour(){const el=document.getElementById('m-timer-disp');if(!el)return;el.classList.remove('timer-ok','timer-warn','timer-urgent','warn');if(mTs<=5)el.classList.add('timer-urgent');else if(mTs<=10)el.classList.add('timer-warn');else el.classList.add('timer-ok');}
 
 // ─── IMPORT / EXPORT UI (T7b) ───
@@ -7810,6 +7878,7 @@ function mCloseFabTray() {
 // Full-screen session tracker: scrollable exercise list, per-set tick boxes,
 // editable reps/weight, running stopwatch, RPE capture on finish.
 
+let wmLastLogged = '';
 let wmFocus = null; // { ei, si } the set the focus view shows; null = the next set to do
 let wmState = null; // { planCtx, exercises: [{name,sets:[{reps,weight,time,trackType,done}]}], startTime, swInterval, elapsed }
 
@@ -8046,6 +8115,7 @@ function wmGetSupersetPartners(ei) {
 function wmHandleSetCompletion(ei, si) {
   if (!wmState) return;
   const ex = wmState.exercises[ei];
+  { const st = ex.sets[si]; wmLastLogged = 'Set ' + (si + 1) + ' logged: ' + (st.trackType === 'time' ? hbNum(st.time) + ' s' : hbNum(st.reps) + ' \u00d7 ' + hbNum(st.weight) + ' kg'); }
   const partners = wmGetSupersetPartners(ei);
 
   if (!partners.length) {
