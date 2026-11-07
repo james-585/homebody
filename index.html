@@ -226,6 +226,9 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overs
 .hb-io-sep{height:1px;background:var(--border);margin:16px 0}
 .hb-io-undo-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin:10px 0}
 .hb-io-undo-row .hb-io-p{flex:1 1 8rem;margin:0}
+.hb-snap-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin:8px 0}
+.hb-snap-row .hb-io-p{flex:1 1 8rem;margin:0}
+.hb-snap-row .btn-secondary{min-height:48px;min-width:96px}
 .hb-io-undo-row .btn-secondary,.hb-io-undo{min-height:48px;min-width:96px}
 .hb-io-undo-wrap{margin:24px 0 8px}
 .hb-io-undo-wrap .hb-io-undo{width:100%}
@@ -516,6 +519,7 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
 <div class="app">
   <!-- HOME -->
   <div id="page-train" class="page active">
+    <div id="hb-nudge" hidden></div>
     <!-- GREETING STRIP -->
     <div class="home-hero" style="padding:16px 18px 14px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
@@ -7155,6 +7159,11 @@ const HBIO = (function () {
     }
     note(inWm ? busyKey : 'io.x.failed', null, null, 'error', fromBar);
   }
+  function markBackedUp() {
+    try { if (window.HB && window.HB.storage.markBackup) window.HB.storage.markBackup(Date.now()); } catch (e) { /* not an app error */ }
+    try { localStorage.removeItem('hb_backup_snooze'); } catch (e) { /* ignore */ }
+    try { if (window.hbNudgeRender) window.hbNudgeRender(); } catch (e) { /* ignore */ }
+  }
   let exporting = false;
   async function exportBackup(btn, from) {
     if (exporting || quiet) return; // after an Undo the page still holds the undone state: nothing to export until Restart (K49)
@@ -7190,6 +7199,7 @@ const HBIO = (function () {
         return;
       }
       pendingExportWarn = null;
+      if (!r.partial) markBackedUp();
       const n = state.workouts.length;
       if (r.partial) note('io.xp.toast', null, null, 'success', fromBar);
       else note(n === 1 ? 'io.x.toastOne' : 'io.x.toast', { n: fmtN(n) }, null, 'success', fromBar);
@@ -7220,6 +7230,7 @@ const HBIO = (function () {
       const r = await window.HB.io.exportFile(exportPayload(), { uncapped: true });
       if (!r.ok) throw new Error('export');
       download(r.text, 'HomeBody_full_' + todayISO() + '.txt', 'text/plain');
+      markBackedUp();
     } catch (e) {
       clearTimeout(t); savingText = false;
       if (btn) { btn.removeAttribute('aria-disabled'); btn.textContent = label; }
@@ -7260,6 +7271,7 @@ const HBIO = (function () {
       kids.push(E('div', 'hb-io-warn', marker('warn'), E('p', 'hb-io-p', S('io.card.lastExportWarn')), b));
     }
     kids.push(E('div', 'hb-io-info', marker('info'), E('p', 'hb-io-p', S('io.health.label'))));
+    kids.push(E('p', 'hb-io-p hb-io-small', st.lastBackupAt ? 'Last backup: ' + new Date(st.lastBackupAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : 'Last backup: never'));
     const mkBtn = (cls, label, io, on) => { const b = E('button', cls, label); b.type = 'button'; b.setAttribute('data-io', io); b.addEventListener('click', () => on(b)); return b; };
     const stack = E('div', 'hb-io-stack');
     stack.append(mkBtn('btn-primary', ro ? C['io.btn.exportSession'] : C['io.btn.export'], 'export', (b) => exportBackup(b, 'card')));
@@ -7276,9 +7288,34 @@ const HBIO = (function () {
     const replay = E('button', 'btn-secondary hb-io-replay', 'Replay App Tutorial'); replay.type = 'button';
     replay.addEventListener('click', () => tutReplay());
     kids.push(E('div', 'hb-io-sep'), replay);
+    const snapBox = E('div', 'hb-snaps'); snapBox.id = 'hb-snaps';
+    kids.push(E('div', 'hb-io-sep'), E('div', 'card-title', 'Automatic snapshots'), snapBox);
     const had = mount.contains(document.activeElement) ? document.activeElement.getAttribute('data-io') : null;
     mount.replaceChildren(...kids);
     if (had) { const t = mount.querySelector('[data-io="' + had + '"]'); if (t) t.focus({ preventScroll: true }); }
+    fillSnaps(snapBox, st);
+  }
+  async function fillSnaps(box, st) {
+    const say1 = (t) => box.replaceChildren(E('p', 'hb-io-p hb-io-small', t));
+    if (!window.HB || !st.snapshots) return say1('Snapshots are not available in this browser.');
+    let list = [];
+    try { list = await window.HB.storage.snapshots(); } catch (e) { return say1('Snapshots could not be read.'); }
+    list = list.slice().sort((a, b) => b.createdAt - a.createdAt).slice(0, 5);
+    if (!list.length) return say1('None yet. One is taken before every import or restore.');
+    const rows = list.map((sn) => {
+      const b = E('button', 'btn-secondary', 'Restore'); b.type = 'button';
+      b.setAttribute('aria-label', 'Restore snapshot from ' + new Date(sn.createdAt).toLocaleString());
+      b.addEventListener('click', () => restoreSnap(sn, b));
+      return E('div', 'hb-snap-row', E('span', 'hb-io-p hb-io-small', new Date(sn.createdAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' · ' + String(sn.reason)), b);
+    });
+    box.replaceChildren(...rows);
+  }
+  async function restoreSnap(sn, btn) {
+    if (hbWorkoutActive()) return note('io.x.failedWorkout', null, null, 'error', false);
+    if (!window.confirm('Restore this snapshot? Your current data is saved as a new snapshot first, then the app reloads.')) return;
+    btn.setAttribute('aria-disabled', 'true');
+    try { await window.HB.storage.restore(sn.id); location.reload(); }
+    catch (e) { btn.removeAttribute('aria-disabled'); window.alert(e && e.kind === 'unsaved' ? 'Wait for the current save to finish, then try again.' : 'Could not restore this snapshot. Nothing was changed.'); }
   }
 
   // ── store status changes: the card, the Reload hold, "Saved" while R5 / UF5 is open ──
@@ -9524,4 +9561,44 @@ if(!state.profile?.name) setTimeout(()=>mToast('👋 Welcome to HomeBody! Tap Pr
 
 </script>
 <script src="src/hb-storage.js" onerror="hbBootFailed()"></script>
+<script src="src/core/backup-nudge.js"></script>
+<script>
+(function () {
+  const SNOOZE_KEY = 'hb_backup_snooze';
+  const el = () => document.getElementById('hb-nudge');
+  function snoozedUntil() { try { const v = Number(localStorage.getItem(SNOOZE_KEY)); return v > 0 ? v : null; } catch (e) { return null; } }
+  function render() {
+    const box = el();
+    if (!box || !window.HBBackupNudge) return;
+    let st = {};
+    try { st = window.HB ? window.HB.storage.status() : {}; } catch (e) { st = {}; }
+    let active = false;
+    try { active = hbWorkoutActive(); } catch (e) { active = false; }
+    let dates = [];
+    try { dates = state.workouts.map((w) => w.date); } catch (e) { dates = []; }
+    const r = window.HBBackupNudge.backupNudge({ now: Date.now(), lastBackupAt: st.lastBackupAt ?? null, workoutDates: dates, snoozedUntil: snoozedUntil(), workoutActive: active });
+    if (!r.due) { box.hidden = true; box.replaceChildren(); return; }
+    if (!box.hidden) return;
+    const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text) n.textContent = text; return n; };
+    const msg = mk('p', 'hb-io-p', r.reason === 'never-exported' ? "You haven't backed up your workouts yet. Save a copy so a phone or browser reset can't wipe them." : "It's been a while since your last backup, and you've trained since. Save a fresh copy.");
+    const go = mk('button', 'btn-primary', 'Back up now'); go.type = 'button';
+    go.addEventListener('click', () => { mShowPage('profile'); setTimeout(() => { const c = document.getElementById('hb-data-card'); if (c) c.scrollIntoView({ block: 'center' }); }, 50); });
+    const later = mk('button', 'btn-secondary', 'Remind me in 7 days'); later.type = 'button';
+    later.addEventListener('click', () => { try { localStorage.setItem(SNOOZE_KEY, String(Date.now() + window.HBBackupNudge.SNOOZE_DAYS * window.HBBackupNudge.DAY)); } catch (e) { /* ignore */ } render(); });
+    box.className = 'card';
+    box.setAttribute('role', 'region'); box.setAttribute('aria-label', 'Backup reminder');
+    box.style.margin = '10px 14px 0';
+    box.replaceChildren(mk('div', 'card-title', 'Back up your data'), msg, go, later);
+    box.hidden = false;
+  }
+  window.hbNudgeRender = render;
+  function start() {
+    try { if (window.HB) window.HB.storage.subscribe(render); } catch (e) { /* no store */ }
+    document.addEventListener('visibilitychange', render);
+    setInterval(render, 60000);
+    render();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();
+</script>
 </body></html>
