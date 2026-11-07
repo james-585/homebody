@@ -256,6 +256,27 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overs
 #page-progress .card-title{font-size:12px;font-weight:600;letter-spacing:0.16em}
 #page-progress .week-row{height:70px;gap:10px}
 #page-progress .week-bar{border-radius:8px;border-color:transparent}
+
+/* Profile redesign (Chalk blue) */
+#page-profile .profile-hero{background:transparent;padding:22px 20px 0;display:flex;align-items:center;gap:14px;text-align:left}
+#page-profile .profile-hero .profile-avatar{width:60px;height:60px;margin:0;flex:none;background:var(--surface);border:2px solid var(--accent);font-size:1.6rem}
+.profile-id{flex:1;min-width:0}
+#page-profile .profile-hero .profile-name{font-weight:600;font-size:1.9rem;line-height:1.05}
+#page-profile .profile-hero .profile-sub{font-size:0.875rem;margin-top:3px}
+.pf-ready{margin:16px 14px 0;background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start;font-size:0.875rem;line-height:1.45}
+.pf-ready svg{flex:none;margin-top:1px}
+.pf-ready strong{display:block;font-weight:600;margin-bottom:4px}
+#page-profile .card{border-radius:22px}
+#page-profile .form-input{border-radius:14px;min-height:48px}
+.pf-row{min-height:64px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border)}
+.pf-label{font-size:0.95rem;font-weight:500}
+.pf-seg{display:flex;background:var(--bg);border:1.5px solid #6A7584;border-radius:14px;padding:3px;gap:3px}
+.pf-seg button{min-width:72px;height:44px;border-radius:11px;border:0;background:transparent;color:var(--text);font-family:'Oswald',sans-serif;font-weight:700;font-size:0.95rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer}
+.pf-seg button[aria-checked="true"]{background:var(--text);color:var(--bg)}
+.pf-accent{padding-top:12px}
+.pf-swatches{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.pf-swatches button{height:52px;border-radius:16px;border:0;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.pf-swatches button[aria-checked="true"]{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--text)}
 /* PROFILE */
 #page-profile{padding-bottom:calc(var(--nav-h) + var(--safe-bottom) + 74px)}
 /* FAB tray: only the button and the visible menu items take taps (the empty tray box used to swallow them) */
@@ -769,19 +790,25 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
   <div id="page-profile" class="page">
     <div class="profile-hero">
       <div class="profile-avatar" id="m-avatar">?</div>
-      <div class="profile-name" id="m-pname">Set up your profile</div>
-      <div class="profile-sub" id="m-psub"></div>
+      <div class="profile-id">
+        <div class="profile-name" id="m-pname">Set up your profile</div>
+        <div class="profile-sub" id="m-psub"></div>
+      </div>
+    </div>
+    <div class="pf-ready" role="note">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="12" y1="7.5" x2="12" y2="7.6"/></svg>
+      <div><strong>Pain or dizziness means stop, and see a professional.</strong><span>Readiness, recovery, calories and strength levels are estimates and are labelled est.</span></div>
     </div>
     <div style="padding:14px;">
 
       <div class="card" style="margin-bottom:12px;">
-        <div class="card-title">⭐ Favourite Exercises</div>
+        <div class="card-title">Favourite exercises</div>
         <div id="m-favs-list"></div>
       </div>
 
       <!-- Body Metrics -->
       <div class="card" style="margin-bottom:12px;">
-        <div class="card-title">📊 Body Metrics</div>
+        <div class="card-title">Body metrics</div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-bottom:12px;">
           <div class="form-group" style="margin:0;">
             <label class="form-label">Weight kg</label>
@@ -817,22 +844,30 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
       </div>
       <!-- Personal Records -->
       <div class="card" style="margin-top:12px;">
-        <div class="card-title">Personal Records 🏆</div>
+        <div class="card-title">Personal records</div>
         <div id="m-prs"><div class="empty-state" style="padding:16px 0;"><p>Log workouts to set PRs</p></div></div>
       </div>
       <div class="card" style="margin-top:12px;">
-        <div class="card-title">🏋️ My Equipment</div>
+        <div class="card-title">My equipment</div>
         <p style="font-size:0.75rem;color:var(--muted);line-height:1.5;margin-bottom:12px;">Your equipment is used to filter exercises and generate personalised plans.</p>
         <div id="m-equip-manager"></div>
       </div>
       <!-- Appearance -->
-      <div class="card" style="margin-top:12px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div class="card-title" style="margin-bottom:0;">Appearance</div>
-          <button id="m-theme-btn" onclick="mToggleTheme()"
-            style="font-family:'Oswald',sans-serif;font-weight:700;font-size:0.75rem;letter-spacing:0.06em;padding:8px 14px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);cursor:pointer;">
-            🌙 Dark
-          </button>
+      <div class="card" id="pf-appearance" style="margin-top:12px;">
+        <div class="card-title">Appearance</div>
+        <div class="pf-row">
+          <div id="pf-theme-l" class="pf-label">Theme</div>
+          <div role="radiogroup" aria-labelledby="pf-theme-l" class="pf-seg">
+            <button type="button" role="radio" id="pf-theme-dark" aria-checked="true" onclick="mSetTheme('dark')">Dark</button>
+            <button type="button" role="radio" id="pf-theme-light" aria-checked="false" onclick="mSetTheme('light')">Light</button>
+          </div>
+        </div>
+        <div class="pf-accent">
+          <div class="pf-row" style="border:0;min-height:0;padding:0 0 10px;">
+            <div id="pf-accent-l" class="pf-label">Accent colour</div>
+            <div id="pf-accent-name" style="font-size:0.8rem;color:var(--muted);"></div>
+          </div>
+          <div role="radiogroup" aria-labelledby="pf-accent-l" class="pf-swatches" id="pf-swatches"></div>
         </div>
       </div>
       <!-- Data & Backup (T7b): built by HBIO.renderCard, docs/design/import-preview.md 3.1 -->
@@ -8915,24 +8950,64 @@ function hbBootFailed() {
 
 
 // ─── THEME ───
+const HB_ACCENTS = {
+  ember: { name: 'Ember', dark: '#FF5A2C', light: '#B33A12' },
+  brass: { name: 'Brass', dark: '#E0A15A', light: '#7E5216' },
+  green: { name: 'Green', dark: '#5DBE8A', light: '#1F7A4A' },
+  blue:  { name: 'Blue',  dark: '#6AA7FF', light: '#2559A8' },
+};
+function mAccentChoice() {
+  let k = 'blue';
+  try { k = localStorage.getItem('hb_accent') || 'blue'; } catch (e) { /* default */ }
+  return Object.prototype.hasOwnProperty.call(HB_ACCENTS, k) ? k : 'blue';
+}
+function mApplyAccent() {
+  const root = document.documentElement;
+  const light = root.getAttribute('data-theme') === 'light';
+  const k = mAccentChoice();
+  if (k === 'blue') { // the tokens already are blue: no override
+    ['--accent', '--action', '--on-accent'].forEach((n) => root.style.removeProperty(n));
+  } else {
+    const hex = HB_ACCENTS[k][light ? 'light' : 'dark'];
+    root.style.setProperty('--accent', hex);
+    root.style.setProperty('--action', hex);
+    root.style.setProperty('--on-accent', light ? '#FFFFFF' : '#0C0E12');
+  }
+  const sw = document.getElementById('pf-swatches');
+  if (sw) {
+    sw.replaceChildren(...Object.keys(HB_ACCENTS).map((key) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', key === k ? 'true' : 'false');
+      b.setAttribute('aria-label', HB_ACCENTS[key].name);
+      b.style.background = HB_ACCENTS[key][light ? 'light' : 'dark'];
+      if (key === k) b.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="' + (light ? '#FFFFFF' : '#0C0E12') + '" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 12.5 10 17.5 19 7"/></svg>';
+      b.addEventListener('click', () => mSetAccent(key));
+      return b;
+    }));
+  }
+  const nm = document.getElementById('pf-accent-name'); if (nm) nm.textContent = HB_ACCENTS[k].name;
+}
+function mSetAccent(k) {
+  if (!Object.prototype.hasOwnProperty.call(HB_ACCENTS, k)) return;
+  try { localStorage.setItem('hb_accent', k); } catch (e) { /* not saved */ }
+  mApplyAccent();
+}
+function mSetTheme(t) {
+  const light = t === 'light';
+  if (light) document.documentElement.setAttribute('data-theme', 'light'); else document.documentElement.removeAttribute('data-theme');
+  try { localStorage.setItem('hb_theme', light ? 'light' : 'dark'); } catch (e) { /* not saved */ }
+  const d = document.getElementById('pf-theme-dark'), l = document.getElementById('pf-theme-light');
+  if (d) d.setAttribute('aria-checked', light ? 'false' : 'true');
+  if (l) l.setAttribute('aria-checked', light ? 'true' : 'false');
+  mApplyAccent();
+}
 function mToggleTheme() {
-  const current = document.documentElement.getAttribute('data-theme');
-  const next = current === 'light' ? 'dark' : 'light';
-  document.documentElement.setAttribute('data-theme', next === 'dark' ? '' : 'light');
-  localStorage.setItem('hb_theme', next);
-  const btn = document.getElementById('m-theme-btn');
-  if (btn) btn.textContent = next === 'light' ? '☀️ Light' : '🌙 Dark';
+  mSetTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light');
 }
 function mLoadTheme() {
   // Theme is always dark unless explicitly set to light
-  const isLight = localStorage.getItem('hb_theme') === 'light';
-  if (isLight) {
-    document.documentElement.setAttribute('data-theme', 'light');
-  } else {
-    document.documentElement.removeAttribute('data-theme');
-  }
-  const btn = document.getElementById('m-theme-btn');
-  if (btn) btn.textContent = isLight ? '☀️ Light' : '🌙 Dark';
+  mSetTheme(localStorage.getItem('hb_theme') === 'light' ? 'light' : 'dark');
 }
 
 // ─── TUTORIAL ───
