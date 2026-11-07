@@ -601,6 +601,38 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
 .hb-tut-btn-skip{background:none;border:none;color:var(--muted);font-size:0.72rem;cursor:pointer;padding:4px 2px;}
 .hb-tut-btn-next{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-family:'Oswald',sans-serif;font-weight:700;font-size:0.82rem;letter-spacing:0.04em;cursor:pointer;}
 .hb-tut-progress{font-size:0.7rem;color:var(--muted);}
+
+/* Workout mode and timers redesign (Chalk blue) */
+.wm-overlay .wm-header{padding:calc(env(safe-area-inset-top,0px) + 14px) 20px 12px;border-bottom:0}
+.wm-overlay .wm-title{font-weight:600;font-size:0.8rem;letter-spacing:0.12em;color:var(--muted)}
+.wm-overlay .wm-sw{color:var(--text);font-size:1.7rem}
+.wm-overlay .wm-sw.inactive{color:var(--muted)}
+.wm-overlay .wm-finish-btn{min-height:44px;padding:0 18px;border-radius:14px;background:transparent;color:var(--text);border:1.5px solid #6A7584;font-size:0.85rem}
+.wm-overlay .wm-progress{height:5px;border-radius:3px;background:var(--surface2)}
+.wm-overlay .wm-progress-fill{background:var(--accent)}
+.wm-overlay .wm-body{padding:12px 16px 220px}
+.wm-overlay .wm-ex{border-radius:24px;margin-bottom:14px;background:var(--surface);border:1px solid var(--border)}
+.wm-overlay .wm-ex.completed{background:var(--surface);border-color:var(--signal)}
+.wm-overlay .wm-ex.superset-linked{border-left:3px solid var(--accent)}
+.wm-overlay .wm-superset-badge{background:color-mix(in srgb,var(--accent) 14%,transparent)}
+.wm-overlay .wm-ex-hdr{padding:16px 16px 10px}
+.wm-overlay .wm-ex-name{font-weight:600;font-size:1.15rem;line-height:1.15}
+.wm-overlay .wm-ex-meta{font-size:0.8rem;margin-top:3px}
+.wm-overlay .wm-sets{padding:0 12px 14px;gap:8px}
+.wm-overlay .wm-set{border-radius:16px;min-height:64px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border)}
+.wm-overlay .wm-set.done{background:color-mix(in srgb,var(--signal) 12%,var(--surface2));border-color:var(--signal)}
+.wm-overlay .wm-set.next-up{border:2px solid var(--accent);background:var(--surface2);box-shadow:none}
+.wm-overlay .wm-set-num{font-size:0.9rem;color:var(--text)}
+.wm-overlay .wm-set-input{border-radius:12px;min-height:52px;font-size:1.25rem;background:var(--bg);border:1px solid #6A7584}
+.wm-overlay .wm-set-input:focus{border-color:var(--accent)}
+.wm-overlay .wm-tick{width:56px;height:56px;border-radius:16px;border:2px solid #6A7584}
+.wm-overlay .wm-tick.done{background:var(--signal);border-color:var(--signal);color:var(--on-accent,#0C0E12)}
+.wm-overlay .wm-sticky-name{background:var(--bg)}
+.wm-overlay .wm-finish-sheet,.wm-finish-sheet{border-radius:28px 28px 0 0}
+.wm-overlay .wm-tick[id$="-L"],.wm-overlay .wm-tick[id$="-R"]{width:46px!important;height:48px!important;font-size:0.8rem!important;border-radius:14px}
+.timer-btn{min-height:60px;border-radius:18px}
+.timer-preset{min-height:44px;border-radius:14px}
+.timer-display{font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
