@@ -36,6 +36,15 @@ export const test = base.extend({
    */
   appPage: async ({ page, siteURL, blocked }, use) => {
     await page.clock.setFixedTime(FROZEN_MS);
+    // Workout mode opens in the one-exercise-at-a-time view by default; most older tests drive the
+    // list view (its #wm-tick-* ids), so the fixture opens that unless a test sets hb_wm_view itself.
+    await page.addInitScript(() => {
+      try {
+        if (!localStorage.getItem('hb_wm_view')) localStorage.setItem('hb_wm_view', 'list');
+      } catch {
+        /* storage unavailable */
+      }
+    });
     await page.route('**/*', (route) => {
       const url = route.request().url();
       if (url.startsWith(siteURL)) return route.continue();

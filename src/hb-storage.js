@@ -255,6 +255,7 @@
           const out = {};
           if (typeof m.persistAskedAt === 'number') out.persistAskedAt = m.persistAskedAt;
           if (seqOk(m.idbSeq)) out.idbSeq = m.idbSeq;
+          if (typeof m.lastBackupAt === 'number') out.lastBackupAt = m.lastBackupAt;
           if (
             ['unsupported', 'error'].includes(m.persistGranted) ||
             typeof m.persistGranted === 'boolean'
@@ -1397,6 +1398,33 @@
     }
 
     /**
+     * Record that the user just exported a backup (T8). Metadata only: never touches the document.
+     * A failed write of it is not an app error; the in-memory value still drives this session.
+     */
+    function markBackup(at = now()) {
+      meta = { ...meta, lastBackupAt: at };
+      const patch = { lastBackupAt: at };
+      try {
+        if (idbMode()) {
+          ready.then(() => engine.idb && engine.writeMeta(patch)).catch(() => {});
+          if (local) Promise.resolve(local.writeMeta(patch)).catch(() => {});
+        } else if (engine) {
+          Promise.resolve(engine.writeMeta(patch)).catch(() => {});
+        }
+      } catch {
+        /* ignore */
+      }
+      for (const fn of [...subs]) {
+        try {
+          fn(status());
+        } catch {
+          /* a bad subscriber must not break saving */
+        }
+      }
+      return at;
+    }
+
+    /**
      * The stored text of the main key, read fresh and unchanged (for the "export saved file" button
      * when the data could not be read). Read-only: never writes. null when unreadable. With
      * IndexedDB this is the v1 mirror.
@@ -1969,6 +1997,7 @@
       subscribe,
       snapshot,
       snapshots,
+      markBackup,
       restore,
       previewImport,
       importBlocked,
@@ -2097,6 +2126,7 @@
             rawText: store.rawText,
             snapshot: store.snapshot,
             snapshots: store.snapshots,
+            markBackup: store.markBackup,
             restore: store.restore,
             saveActive: store.saveActive,
             ready: store.ready,

@@ -109,7 +109,7 @@ test.describe('copy, card and mapping', () => {
     expect(text).toContain(c.get('io.health.label')[0]);
     expect(text).toContain(c.get('io.card.importNote')[0]);
     expect(text).toMatch(/File name: HomeBody_2026-11-01\.vaultfit/);
-    const btns = await page.locator('#hb-data-card button').allTextContents();
+    const btns = await page.locator('#hb-data-card button:not(#hb-snaps button)').allTextContents();
     expect(btns.map((t) => t.trim())).toEqual([
       'Export backup',
       'Import backup',
