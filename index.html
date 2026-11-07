@@ -99,7 +99,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overs
 .mini-label{font-size:0.7rem;color:var(--muted);text-align:center;font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:3px}
 .type-pill{display:flex;border-radius:6px;overflow:hidden;border:1px solid var(--border);background:var(--bg);width:100%}
 .type-pill button{flex:1;padding:9px 4px;font-family:'Oswald',sans-serif;font-size:0.7rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;border:none;background:none;color:var(--muted);cursor:pointer;transition:background 0.12s,color 0.12s}
-.type-pill button.active{background:var(--accent);color:#000}
+.type-pill button.active{background:var(--accent);color:var(--on-accent)}
 .btn-rm{background:none;border:1px solid var(--border);color:var(--muted);width:34px;height:34px;border-radius:8px;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center}
 .btn-rm:active{border-color:var(--red);color:var(--red)}
 .m-overload-hint{font-size:0.7rem;color:var(--accent);margin-top:5px;line-height:1.4;display:flex;align-items:flex-start;gap:4px;}
@@ -144,7 +144,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overs
 .show-wkt-weight{font-size:1rem;color:var(--muted);margin-top:4px;font-family:'Inter',sans-serif;}
 .m-rpe-label{font-size:0.68rem;color:var(--muted);font-weight:500;width:100%;margin-bottom:2px;}
 .m-rpe-btn{width:28px;height:28px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-family:'Oswald',sans-serif;font-weight:700;font-size:0.75rem;cursor:pointer;}
-.m-rpe-btn.active{border-color:var(--accent);background:var(--accent);color:#000;}
+.m-rpe-btn.active{border-color:var(--accent);background:var(--accent);color:var(--on-accent);}
 .btn-add-ex{width:100%;padding:12px;border-radius:8px;background:none;border:1px dashed var(--border);color:var(--muted);font-family:'Oswald',sans-serif;font-weight:700;font-size:0.75rem;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;margin-bottom:12px}
 .btn-add-ex:active{border-color:var(--accent);color:var(--accent)}
 .workout-meta-row{display:grid;grid-template-columns:1fr 80px 80px;gap:8px;margin-bottom:12px}
@@ -157,21 +157,21 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overs
 .week-bar.today .week-bar-fill{background:var(--today)}
 .week-day{font-size:0.7rem;color:var(--muted);font-family:'Oswald',sans-serif;font-weight:600;text-transform:uppercase}
 /* EXERCISES */
-#page-exercises{padding-bottom:12px;display:none!important}
+#page-exercises{padding-bottom:12px}
 .ex-search-bar{padding:12px 14px;position:sticky;top:68px;z-index:40;background:var(--bg)}
 .ex-search-input{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:13px 16px;border-radius:10px;font-family:'Inter',sans-serif;font-size:1rem;-webkit-appearance:none}
 .ex-search-input:focus{outline:none;border-color:var(--accent)}.ex-search-input::placeholder{color:var(--muted)}
 .ex-filter-chips{padding:0 14px 10px;display:flex;gap:7px;overflow-x:auto;-webkit-overflow-scrolling:touch}
 .ex-filter-chips::-webkit-scrollbar{display:none}
 .chip{font-family:'Oswald',sans-serif;font-weight:700;font-size:0.68rem;letter-spacing:0.06em;text-transform:uppercase;padding:7px 14px;border-radius:20px;white-space:nowrap;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;transition:all 0.15s;flex-shrink:0}
-.chip.active{background:var(--accent);border-color:var(--accent);color:#000}
+.chip.active{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .ex-cards{padding:0 14px;display:flex;flex-direction:column;gap:8px}
 .ex-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;gap:12px;align-items:flex-start}
 .ex-card:active{border-color:var(--accent)}
 .ex-card-icon{width:40px;height:40px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.15rem;flex-shrink:0}
 .ex-card-body{flex:1;min-width:0}.ex-card-name{font-weight:600;font-size:1rem;margin-bottom:2px}
 .ex-card-meta{font-size:0.75rem;color:var(--muted)}
-.ex-card-muscle{display:inline-block;margin-top:5px;font-family:'Oswald',sans-serif;font-size:0.7rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:3px 8px;border-radius:4px;background:rgba(232,77,42,0.1);color:var(--accent);border:1px solid rgba(232,77,42,0.2)}
+.ex-card-muscle{display:inline-block;margin-top:5px;font-family:'Oswald',sans-serif;font-size:0.7rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:3px 10px;border-radius:11px;background:var(--surface2);color:var(--text)}
 .ex-card-actions{display:flex;flex-direction:column;gap:5px;flex-shrink:0}
 .btn-how{font-family:'Oswald',sans-serif;font-weight:700;font-size:0.7rem;letter-spacing:0.06em;text-transform:uppercase;padding:7px 10px;border-radius:6px;background:none;color:var(--muted);border:1px solid var(--border);cursor:pointer}
 .btn-add-sm{font-family:'Oswald',sans-serif;font-weight:700;font-size:0.7rem;letter-spacing:0.06em;text-transform:uppercase;padding:7px 10px;border-radius:6px;background:var(--accent);color:var(--on-accent);border:none;cursor:pointer}
@@ -231,6 +231,23 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overs
 #page-plans .plan-level-badge::before{content:'';width:14px;height:12px;flex:none;background:linear-gradient(var(--text),var(--text)) 0 100%/4px 6px no-repeat,linear-gradient(var(--l2),var(--l2)) 5px 100%/4px 9px no-repeat,linear-gradient(var(--l3),var(--l3)) 10px 100%/4px 12px no-repeat}
 #page-plans .plan-level-badge.intermediate{--l2:var(--text)}
 #page-plans .plan-level-badge.advanced{--l2:var(--text);--l3:var(--text)}
+
+/* Library redesign (Chalk blue) */
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+#page-exercises .ex-search-bar{position:static;padding:18px 20px 0}
+.ex-search-field{display:flex;align-items:center;gap:10px;height:56px;box-sizing:border-box;padding:0 16px;border-radius:18px;background:var(--surface);border:1.5px solid #6A7584;color:var(--text)}
+.ex-search-field:focus-within{border-color:var(--accent)}
+.ex-search-field .ex-search-input{flex:1;min-width:0;height:100%;background:transparent;border:0;padding:0;border-radius:0;outline:none}
+#page-exercises .ex-filter-chips{padding:14px 20px 2px;gap:8px}
+#page-exercises .chip{min-height:44px;padding:0 16px;border-radius:22px;font-family:'Inter',sans-serif;font-size:0.875rem;font-weight:600;letter-spacing:0;text-transform:none;display:inline-flex;align-items:center;gap:6px;border-color:#6A7584}
+#page-exercises .chip.active::before{content:'';width:14px;height:14px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='5 12.5 10 17.5 19 7'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='5 12.5 10 17.5 19 7'/%3E%3C/svg%3E") center/contain no-repeat}
+#page-exercises .ex-cards{padding:8px 20px 0;gap:0}
+#page-exercises .ex-card{background:transparent;border:0;border-bottom:1px solid var(--surface2);border-radius:0;padding:12px 0;min-height:64px;align-items:center}
+#page-exercises .ex-card-icon{display:none}
+#page-exercises .ex-card-name{font-size:1rem;font-weight:500;margin-bottom:4px}
+#page-exercises .ex-card-meta{margin-bottom:0}
+#page-exercises .ex-card-actions{flex-direction:row;align-items:center;gap:6px}
+#page-exercises .ex-card-actions button{min-height:44px;min-width:44px}
 /* PROFILE */
 #page-profile{padding-bottom:calc(var(--nav-h) + var(--safe-bottom) + 74px)}
 /* FAB tray: only the button and the visible menu items take taps (the empty tray box used to swallow them) */
@@ -366,10 +383,10 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
 .timer-display.timer-ok{color:var(--accent)}.timer-display.timer-warn{color:var(--warning)}.timer-display.timer-urgent{color:var(--danger);}
 .timer-presets{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:14px}
 .timer-preset{font-family:'Oswald',sans-serif;font-weight:700;font-size:0.75rem;letter-spacing:0.06em;padding:9px 14px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer}
-.timer-preset.active{background:var(--accent);border-color:var(--accent);color:#000}
+.timer-preset.active{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .timer-btns{display:flex;gap:8px;justify-content:center}
 .timer-btn{font-family:'Oswald',sans-serif;font-weight:700;font-size:0.8rem;letter-spacing:0.08em;text-transform:uppercase;padding:13px 24px;border-radius:8px;cursor:pointer;border:none}
-.timer-btn.start{background:var(--accent);color:#000}.timer-btn.stop{background:var(--surface2);color:var(--text);border:1px solid var(--border)}.timer-btn.reset{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+.timer-btn.start{background:var(--accent);color:var(--on-accent)}.timer-btn.stop{background:var(--surface2);color:var(--text);border:1px solid var(--border)}.timer-btn.reset{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
 .empty-state{text-align:center;padding:40px 20px;color:var(--muted)}.empty-state .icon{font-size:2.5rem;margin-bottom:12px;opacity:0.35}.empty-state p{font-size:0.85rem;line-height:1.6}
 /* MUSCLE RECOVERY */
 .m-muscle-row{display:flex;align-items:center;gap:12px;padding:7px 0;border-bottom:1px solid rgba(30,45,64,0.5);}
@@ -652,11 +669,14 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
     </div>
   </div>
   <!-- EXERCISES -->
-  <div id="page-exercises" class="page" style="display:none!important;">
-    <div class="page-header"><h1>Exercises</h1><p>Tap any exercise for instructions</p></div>
-    <div class="ex-search-bar"><input class="ex-search-input" id="m-ex-search" placeholder="Search exercises…" oninput="mFilterExercises()" autocomplete="off"></div>
+  <div id="page-exercises" class="page">
+    <div class="pl-head">
+      <div class="pl-eyebrow">Exercises</div>
+      <h1>Library</h1>
+    </div>
+    <div class="ex-search-bar"><label class="ex-search-field"><span class="sr-only">Search exercises</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input class="ex-search-input" id="m-ex-search" type="search" placeholder="Search by name or muscle" oninput="mFilterExercises()" autocomplete="off"></label></div>
     <div class="ex-filter-chips" id="m-equip-chips">
-      <button class="chip" id="m-fav-chip" onclick="mToggleFavFilter(this)">⭐ Favourites</button>
+      <button class="chip" id="m-fav-chip" onclick="mToggleFavFilter(this)">Favourites</button>
     </div>
     <div class="ex-cards" id="m-ex-cards"></div>
   </div>
@@ -918,8 +938,9 @@ html[data-theme="light"] .hb-io-danger{color:#fff}
 <!-- BOTTOM NAV -->
 <nav class="bottom-nav">
   <button class="nav-tab active" aria-current="page" id="tab-train" onclick="mShowPage('train')"><span class="tab-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v16M18 4v16M2 9h4M18 9h4M2 15h4M18 15h4M6 9h12M6 15h12"/></svg></span><span class="tab-label">Train</span></button>
-  <button class="nav-tab" id="tab-progress" onclick="mShowPage('progress')"><span class="tab-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span><span class="tab-label">Progress</span></button>
   <button class="nav-tab" id="tab-plans" onclick="mShowPage('plans')"><span class="tab-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="8" y2="14"/><line x1="12" y1="14" x2="12" y2="14"/><line x1="16" y1="14" x2="16" y2="14"/></svg></span><span class="tab-label">Plans</span></button>
+  <button class="nav-tab" id="tab-exercises" onclick="mShowPage('exercises')"><span class="tab-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg></span><span class="tab-label">Library</span></button>
+  <button class="nav-tab" id="tab-progress" onclick="mShowPage('progress')"><span class="tab-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span><span class="tab-label">Progress</span></button>
   <button class="nav-tab" id="tab-profile" onclick="mShowPage('profile')"><span class="tab-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span><span class="tab-label">Profile</span></button>
 </nav>
 <!-- FAB Tray -->
@@ -2019,6 +2040,7 @@ function mShowPage(id) {
   if (id === 'progress') { mRenderProgress(); }
   if (id === 'plans')    mRenderPlans();
   if (id === 'profile')  mRenderProfile();
+  if (id === 'exercises') mRenderExercises();
 }
 function mOpenModal(id)  { document.getElementById(id).classList.add('open'); }
 function mCloseModal(id, e) { if (e && e.target !== document.getElementById(id)) return; document.getElementById(id).classList.remove('open'); }
@@ -2749,7 +2771,7 @@ function mRenderExercises() {
   const equips=['All',...new Set(EXERCISES.map(e=>e.equip))];
   const chipContainer = document.getElementById('m-equip-chips');
   chipContainer.innerHTML =
-    `<button class="chip${mShowFavsOnly?' active':''}" id="m-fav-chip" onclick="mToggleFavFilter(this)">⭐ Favs</button>` +
+    `<button class="chip${mShowFavsOnly?' active':''}" id="m-fav-chip" onclick="mToggleFavFilter(this)">Favourites</button>` +
     equips.map((eq,i)=>`<button class="chip${!mShowFavsOnly&&((i===0&&!mEquipFilter)||(mEquipFilter===eq))?' active':''}" onclick="mChipFilter('${escHtml(eq)}',this)">${escHtml(eq)}</button>`).join('');
   document.getElementById('m-ex-suggestions').innerHTML=EXERCISES.map(e=>`<option value="${escHtml(e.name)}">`).join('');
   mFilterExercises();
@@ -4868,7 +4890,7 @@ function mRenderEquipManager() {
         <div class="equip-cat-title">
           <span>${cat.icon}</span>
           <span>${cat.label}</span>
-          ${ownedCount > 0 ? `<span style="background:var(--accent);color:#000;font-size:0.7rem;padding:2px 6px;border-radius:10px;font-family:'Oswald',sans-serif;font-weight:700;">${ownedCount}</span>` : ''}
+          ${ownedCount > 0 ? `<span style="background:var(--accent);color:var(--on-accent);font-size:0.7rem;padding:2px 6px;border-radius:10px;font-family:'Oswald',sans-serif;font-weight:700;">${ownedCount}</span>` : ''}
         </div>
         <span style="color:var(--muted);font-size:0.8rem;">${isOpen?'▲':'▼'}</span>
       </div>
